@@ -2,7 +2,6 @@ import React from 'react';
 import { Box, Button, Container, Paper, Typography } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import logo from '../images/FreedomPower_Horizontal_FullColor.png';
 
 const theme = createTheme({
   palette: {
@@ -22,6 +21,9 @@ const GoogleIcon = () => (
 );
 
 export default function LoginPage() {
+  // Get logo URL from data attribute set by Rails asset pipeline
+  const logoUrl = document.getElementById('react-root')?.getAttribute('data-logo-url');
+
   const handleGoogleLogin = () => {
     // Create a form and submit it as POST (required by Devise OmniAuth)
     const form = document.createElement('form');
@@ -66,7 +68,7 @@ export default function LoginPage() {
           >
             <Box
               component="img"
-              src={logo}
+              src={logoUrl}
               alt="Freedom Power"
               sx={{ width: 280, mb: 2 }}
             />
