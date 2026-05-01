@@ -78,7 +78,7 @@ group :test do
   gem "simplecov-json", require: false
 
   # Testing helpers
-  gem "shoulda-matchers", "~> 5.0"
+  gem "shoulda-matchers", "~> 7.0"
   gem "webmock"
   gem "vcr"
   gem "database_cleaner-active_record"
