@@ -11,6 +11,31 @@ RSpec.describe PoGenerationJob, type: :model do
     it { should validate_inclusion_of(:status).in_array(%w[pending running completed failed]) }
   end
 
+  describe 'attributes' do
+    it 'has skip_email attribute with default false' do
+      job = create(:po_generation_job)
+      expect(job.skip_email).to eq(false)
+    end
+
+    it 'can set skip_email to true' do
+      job = create(:po_generation_job, skip_email: true)
+      expect(job.skip_email).to eq(true)
+    end
+
+    it 'stores project_ids as array' do
+      job = create(:po_generation_job, project_ids: ['SF-001', 'SF-002'])
+      expect(job.project_ids).to be_an(Array)
+      expect(job.project_ids).to contain_exactly('SF-001', 'SF-002')
+    end
+
+    it 'stores po_results as JSON' do
+      results = [{ po_id: 12345, project_id: 'SF-001' }]
+      job = create(:po_generation_job, po_results: results)
+      expect(job.po_results).to be_an(Array)
+      expect(job.po_results.first['po_id']).to eq(12345)
+    end
+  end
+
   describe 'scopes' do
     let!(:pending_job) { create(:po_generation_job, status: 'pending') }
     let!(:running_job) { create(:po_generation_job, :running) }
@@ -145,6 +170,99 @@ RSpec.describe PoGenerationJob, type: :model do
     it 'returns false when status is not failed' do
       job = create(:po_generation_job, status: 'completed')
       expect(job.failed?).to be false
+    end
+  end
+
+  describe 'status helpers' do
+    it 'identifies pending jobs' do
+      job = create(:po_generation_job, status: 'pending')
+      expect(job.completed?).to be false
+      expect(job.failed?).to be false
+    end
+
+    it 'identifies running jobs' do
+      job = create(:po_generation_job, :running)
+      expect(job.completed?).to be false
+      expect(job.failed?).to be false
+    end
+  end
+
+  describe 'timestamps' do
+    it 'sets created_at on creation' do
+      job = create(:po_generation_job)
+      expect(job.created_at).to be_present
+    end
+
+    it 'updates updated_at on changes' do
+      job = create(:po_generation_job)
+      original_time = job.updated_at
+      sleep 0.01
+      job.update(status: 'running')
+      expect(job.updated_at).to be > original_time
+    end
+  end
+
+  describe 'edge cases' do
+    describe '.locked_project_ids with nil project_ids' do
+      it 'handles jobs with nil project_ids' do
+        create(:po_generation_job, :running, project_ids: nil)
+        create(:po_generation_job, :running, project_ids: ['proj_1'])
+
+        locked_ids = PoGenerationJob.locked_project_ids
+        expect(locked_ids).to eq(['proj_1'])
+      end
+    end
+
+    describe '.running_for_region? with nil region' do
+      it 'returns true when job with nil region exists' do
+        create(:po_generation_job, :running, region: nil)
+        expect(PoGenerationJob.running_for_region?(nil)).to be true
+      end
+
+      it 'handles empty region string' do
+        create(:po_generation_job, :running, region: '')
+        expect(PoGenerationJob.running_for_region?('')).to be true
+      end
+    end
+
+    describe 'status transitions' do
+      it 'can transition from pending to running to completed' do
+        job = create(:po_generation_job, status: 'pending')
+        expect(job).not_to be_completed
+        expect(job).not_to be_failed
+
+        job.update(status: 'running')
+        expect(job).not_to be_completed
+
+        job.update(status: 'completed')
+        expect(job).to be_completed
+      end
+
+      it 'can transition to failed status' do
+        job = create(:po_generation_job, status: 'running')
+        job.update(status: 'failed')
+        expect(job).to be_failed
+        expect(job).not_to be_completed
+      end
+    end
+
+    describe '#acquire_lock! with different worker IDs' do
+      it 'updates lock with new worker ID' do
+        job = create(:po_generation_job)
+        job.acquire_lock!('worker_1')
+        expect(job.reload.locked_by).to eq('worker_1')
+
+        job.acquire_lock!('worker_2')
+        expect(job.reload.locked_by).to eq('worker_2')
+      end
+    end
+
+    describe '#release_lock! on unlocked job' do
+      it 'safely handles releasing lock on already unlocked job' do
+        job = create(:po_generation_job)
+        expect { job.release_lock! }.not_to raise_error
+        expect(job.reload.locked_at).to be_nil
+      end
     end
   end
 end

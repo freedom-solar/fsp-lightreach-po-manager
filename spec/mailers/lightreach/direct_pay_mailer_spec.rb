@@ -190,6 +190,63 @@ RSpec.describe Lightreach::DirectPayMailer, type: :mailer do
         expect(mail.to).to include('David.Principato@greentechrenewables.com')
       end
     end
+
+    context 'when regional_rom returns nil' do
+      before do
+        allow(DistributionList).to receive(:warehouse).and_return(['warehouse@example.com'])
+        allow(DistributionList).to receive(:regional_rom).and_return(nil)
+      end
+
+      let(:mail) do
+        described_class.regional_pos_created(
+          region: 'Austin',
+          created_pos: created_pos,
+          po_pdfs: po_pdfs,
+          summary_pdf: summary_pdf,
+          test_mode: false
+        )
+      end
+
+      it 'sends email without error' do
+        expect { mail.deliver_now }.not_to raise_error
+      end
+
+      it 'does not include nil in recipients' do
+        expect(mail.to).not_to include(nil)
+      end
+    end
+
+    context 'with region name containing spaces' do
+      let(:region) { 'San Antonio' }
+      let(:created_pos) do
+        [
+          {
+            po_id: 12345,
+            project_id: 'SF-001',
+            project_name: 'San Antonio Project 1',
+            location_name: 'San Antonio',
+            po_items: [],
+            job_start: '2025-02-01T10:00:00Z'
+          }
+        ]
+      end
+      let(:po_pdfs) { [{ po_id: 12345, project_id: 'SF-001', pdf_binary: mock_pdf_binary }] }
+
+      let(:mail) do
+        described_class.regional_pos_created(
+          region: region,
+          created_pos: created_pos,
+          po_pdfs: po_pdfs,
+          summary_pdf: summary_pdf,
+          test_mode: false
+        )
+      end
+
+      it 'replaces spaces with underscores in summary filename' do
+        summary_attachment = mail.attachments.find { |a| a.filename == 'Lightreach_Direct_Pay_San_Antonio_Summary.pdf' }
+        expect(summary_attachment).to be_present
+      end
+    end
   end
 
   describe '#single_po_created' do

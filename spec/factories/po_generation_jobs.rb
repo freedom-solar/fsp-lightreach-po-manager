@@ -7,6 +7,12 @@ FactoryBot.define do
     successful_pos { 0 }
     failed_pos { 0 }
 
+    trait :single_job do
+      job_type { 'single' }
+      project_ids { ['SF-001'] }
+      total_projects { 1 }
+    end
+
     trait :region_job do
       job_type { 'region' }
       region { 'NorCal' }

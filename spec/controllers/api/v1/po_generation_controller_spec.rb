@@ -33,8 +33,8 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
 
         expect(response).to have_http_status(:success)
         json = JSON.parse(response.body)
-        expect(json['job_id']).to be_present
-        expect(json['message']).to include('started')
+        expect(json['data']['job_id']).to be_present
+        expect(json['data']['message']).to include('started')
       end
     end
 
@@ -57,7 +57,7 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
       it 'returns error message' do
         post :generate_region, params: { region: region }
         json = JSON.parse(response.body)
-        expect(json['error']).to include('already in progress')
+        expect(json['error']).to include('already running')
       end
     end
 
@@ -66,9 +66,33 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
         sign_out user
       end
 
-      it 'returns unauthorized' do
+      it 'redirects to sign in' do
         post :generate_region, params: { region: region }
-        expect(response).to have_http_status(:unauthorized)
+        expect(response).to have_http_status(:found)
+      end
+    end
+
+    context 'when region parameter is blank' do
+      it 'returns bad request' do
+        post :generate_region, params: { region: '' }
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    context 'when an unexpected error occurs' do
+      before do
+        allow(PoGenerationJob).to receive(:running_for_region?).and_raise(StandardError, 'Unexpected error')
+      end
+
+      it 'returns internal server error' do
+        post :generate_region, params: { region: region }
+        expect(response).to have_http_status(:internal_server_error)
+      end
+
+      it 'includes error message in response' do
+        post :generate_region, params: { region: region }
+        json = JSON.parse(response.body)
+        expect(json['error']).to include('Failed to start PO generation')
       end
     end
   end
@@ -77,6 +101,7 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
     let(:project_id) { 'SF-12345' }
 
     it 'creates a new job' do
+      allow(PoGenerationWorker).to receive(:perform_async)
       expect {
         post :generate_single, params: { project_id: project_id }
       }.to change(PoGenerationJob, :count).by(1)
@@ -87,17 +112,87 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
     end
 
     it 'enqueues the worker' do
-      expect(BatchPoGenerationWorker).to receive(:perform_async)
+      expect(PoGenerationWorker).to receive(:perform_async)
       post :generate_single, params: { project_id: project_id }
     end
 
+    context 'when project is already being processed' do
+      before do
+        create(:po_generation_job, :running, project_ids: [project_id])
+      end
+
+      it 'returns conflict status' do
+        post :generate_single, params: { project_id: project_id }
+        expect(response).to have_http_status(:conflict)
+      end
+
+      it 'does not create a new job' do
+        expect {
+          post :generate_single, params: { project_id: project_id }
+        }.not_to change(PoGenerationJob, :count)
+      end
+
+      it 'returns error message' do
+        post :generate_single, params: { project_id: project_id }
+        json = JSON.parse(response.body)
+        expect(json['error']).to include('already running')
+      end
+    end
+
     it 'returns success response' do
-      allow(BatchPoGenerationWorker).to receive(:perform_async)
+      allow(PoGenerationWorker).to receive(:perform_async)
       post :generate_single, params: { project_id: project_id }
 
-      expect(response).to have_http_status(:success)
+      expect(response).to have_http_status(:created)
       json = JSON.parse(response.body)
-      expect(json['job_id']).to be_present
+      expect(json['data']['job_id']).to be_present
+    end
+
+    context 'with skip_email parameter' do
+      it 'creates job with skip_email set to true' do
+        allow(PoGenerationWorker).to receive(:perform_async)
+        post :generate_single, params: { project_id: project_id, skip_email: true }
+
+        job = PoGenerationJob.last
+        expect(job.skip_email).to be true
+      end
+
+      it 'passes skip_email to worker when true' do
+        expect(PoGenerationWorker).to receive(:perform_async).with(anything, skip_email: true)
+        post :generate_single, params: { project_id: project_id, skip_email: 'true' }
+      end
+
+      it 'passes skip_email to worker when boolean true' do
+        expect(PoGenerationWorker).to receive(:perform_async).with(anything, skip_email: true)
+        post :generate_single, params: { project_id: project_id, skip_email: true }
+      end
+    end
+
+    context 'with skip_crew_check parameter' do
+      it 'accepts skip_crew_check parameter' do
+        allow(PoGenerationWorker).to receive(:perform_async)
+        expect {
+          post :generate_single, params: { project_id: project_id, skip_crew_check: true }
+        }.not_to raise_error
+      end
+    end
+
+    context 'when project_id is blank' do
+      it 'returns bad request' do
+        post :generate_single, params: { project_id: '' }
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    context 'when an unexpected error occurs' do
+      before do
+        allow(PoGenerationJob).to receive(:locked_project_ids).and_raise(StandardError, 'Database error')
+      end
+
+      it 'returns internal server error' do
+        post :generate_single, params: { project_id: project_id }
+        expect(response).to have_http_status(:internal_server_error)
+      end
     end
   end
 
@@ -147,7 +242,7 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
       it 'returns conflicting project IDs' do
         post :generate_batch, params: { project_ids: project_ids }
         json = JSON.parse(response.body)
-        expect(json['conflicting_projects']).to include('SF-001')
+        expect(json['data']['conflicting_projects']).to include('SF-001')
       end
     end
 
@@ -155,6 +250,17 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
       it 'returns bad request' do
         post :generate_batch, params: { project_ids: [] }
         expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    context 'when an unexpected error occurs' do
+      before do
+        allow(PoGenerationJob).to receive(:locked_project_ids).and_raise(StandardError, 'Database error')
+      end
+
+      it 'returns internal server error' do
+        post :generate_batch, params: { project_ids: project_ids }
+        expect(response).to have_http_status(:internal_server_error)
       end
     end
   end
@@ -167,8 +273,8 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
 
       expect(response).to have_http_status(:success)
       json = JSON.parse(response.body)
-      expect(json['status']).to eq(job.status)
-      expect(json['job_type']).to eq(job.job_type)
+      expect(json['data']['job']['status']).to eq(job.status)
+      expect(json['data']['job']['job_type']).to eq(job.job_type)
     end
 
     it 'includes logs' do
@@ -177,8 +283,8 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
       get :job_status, params: { id: job.id }
 
       json = JSON.parse(response.body)
-      expect(json['logs']).to be_an(Array)
-      expect(json['logs'].first['message']).to eq('Test log')
+      expect(json['data']['logs']).to be_an(Array)
+      expect(json['data']['logs'].first['message']).to eq('Test log')
     end
 
     context 'when job does not exist' do
@@ -192,38 +298,72 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
       let(:other_user) { create(:user, email: 'other@gofreedompower.com') }
       let(:other_job) { create(:po_generation_job, user: other_user) }
 
-      it 'returns not found' do
+      it 'returns job status for any user' do
         get :job_status, params: { id: other_job.id }
-        expect(response).to have_http_status(:not_found)
+        expect(response).to have_http_status(:success)
+      end
+    end
+
+    context 'when an unexpected error occurs' do
+      before do
+        allow(PoGenerationJob).to receive(:find).and_raise(StandardError, 'Database error')
+      end
+
+      it 'returns internal server error' do
+        get :job_status, params: { id: job.id }
+        expect(response).to have_http_status(:internal_server_error)
       end
     end
   end
 
   describe 'POST #resend_email' do
-    let(:job) { create(:po_generation_job, :completed, user: user) }
+    let(:job) { create(:po_generation_job, :completed_batch, user: user, successful_pos: 1) }
 
     before do
       allow_any_instance_of(EmailNotificationService).to receive(:send_batch_email)
     end
 
     it 'calls email notification service' do
-      expect_any_instance_of(EmailNotificationService).to receive(:send_batch_email).with(test_mode: false)
-      post :resend_email, params: { id: job.id }
+      expect_any_instance_of(EmailNotificationService).to receive(:send_batch_email)
+      post :resend_email, params: { job_id: job.id }
     end
 
     it 'returns success response' do
-      post :resend_email, params: { id: job.id }
+      post :resend_email, params: { job_id: job.id }
 
       expect(response).to have_http_status(:success)
       json = JSON.parse(response.body)
-      expect(json['message']).to include('Email sent')
+      expect(json['data']['message']).to include('Email resent')
+    end
+
+    context 'when job_id parameter is blank' do
+      it 'returns bad request' do
+        post :resend_email, params: { job_id: '' }
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    context 'when job does not exist' do
+      it 'returns not found' do
+        post :resend_email, params: { job_id: 99999 }
+        expect(response).to have_http_status(:not_found)
+      end
     end
 
     context 'when job is not completed' do
       let(:running_job) { create(:po_generation_job, :running, user: user) }
 
       it 'returns bad request' do
-        post :resend_email, params: { id: running_job.id }
+        post :resend_email, params: { job_id: running_job.id }
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    context 'when job has no successful POs' do
+      let(:failed_job) { create(:po_generation_job, :completed, user: user, successful_pos: 0) }
+
+      it 'returns bad request' do
+        post :resend_email, params: { job_id: failed_job.id }
         expect(response).to have_http_status(:bad_request)
       end
     end
@@ -234,7 +374,7 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
       end
 
       it 'returns error response' do
-        post :resend_email, params: { id: job.id }
+        post :resend_email, params: { job_id: job.id }
         expect(response).to have_http_status(:internal_server_error)
       end
     end

@@ -99,10 +99,14 @@ module Api
         overlapping = project_ids & locked_ids
 
         if overlapping.any?
-          return render_error(
-            "PO generation is already running for projects: #{overlapping.join(', ')}",
-            status: :conflict
-          )
+          render json: {
+            success: false,
+            error: "PO generation is already running for projects: #{overlapping.join(', ')}",
+            data: {
+              conflicting_projects: overlapping
+            }
+          }, status: :conflict
+          return
         end
 
         # Create job record

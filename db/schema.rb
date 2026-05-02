@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_01_165100) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_01_201454) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -31,6 +31,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_01_165100) do
     t.text "error_message"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "skip_email", default: false
     t.index ["locked_at"], name: "index_po_generation_jobs_on_locked_at"
     t.index ["status", "region"], name: "index_po_generation_jobs_on_status_and_region"
     t.index ["user_id"], name: "index_po_generation_jobs_on_user_id"

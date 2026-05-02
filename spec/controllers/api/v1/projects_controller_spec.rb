@@ -50,15 +50,15 @@ RSpec.describe Api::V1::ProjectsController, type: :controller do
     it 'returns projects data' do
       get :schedule_by_region, params: { region: region }
       json = JSON.parse(response.body)
-      expect(json['projects']).to be_an(Array)
-      expect(json['projects'].length).to eq(2)
+      expect(json['data']['projects']).to be_an(Array)
+      expect(json['data']['projects'].length).to eq(2)
     end
 
     it 'transforms project data correctly' do
       get :schedule_by_region, params: { region: region }
       json = JSON.parse(response.body)
 
-      project = json['projects'].first
+      project = json['data']['projects'].first
       expect(project['id']).to eq('SF-001')
       expect(project['name']).to eq('Austin Project 1')
       expect(project['system_size']).to eq(10.5)
@@ -70,7 +70,7 @@ RSpec.describe Api::V1::ProjectsController, type: :controller do
       get :schedule_by_region, params: { region: region }
       json = JSON.parse(response.body)
 
-      project_with_po = json['projects'].find { |p| p['id'] == 'SF-002' }
+      project_with_po = json['data']['projects'].find { |p| p['id'] == 'SF-002' }
       expect(project_with_po['has_po']).to be true
     end
 
@@ -98,9 +98,9 @@ RSpec.describe Api::V1::ProjectsController, type: :controller do
         sign_out user
       end
 
-      it 'returns unauthorized' do
+      it 'redirects to sign in' do
         get :schedule_by_region, params: { region: region }
-        expect(response).to have_http_status(:unauthorized)
+        expect(response).to have_http_status(:found)
       end
     end
 
@@ -140,9 +140,9 @@ RSpec.describe Api::V1::ProjectsController, type: :controller do
     it 'returns project data' do
       get :show, params: { id: project_id }
       json = JSON.parse(response.body)
-      expect(json['project']).to be_present
-      expect(json['project']['id']).to eq(project_id)
-      expect(json['project']['name']).to eq('Test Project')
+      expect(json['data']['project']).to be_present
+      expect(json['data']['project']['id']).to eq(project_id)
+      expect(json['data']['project']['name']).to eq('Test Project')
     end
 
     context 'when project not found' do
@@ -156,14 +156,31 @@ RSpec.describe Api::V1::ProjectsController, type: :controller do
       end
     end
 
+    context 'when an unexpected error occurs' do
+      before do
+        allow(ProjectSunriseApi).to receive(:get_projects_bulk).and_raise(StandardError, 'API Error')
+      end
+
+      it 'returns internal server error' do
+        get :show, params: { id: project_id }
+        expect(response).to have_http_status(:internal_server_error)
+      end
+
+      it 'returns error message' do
+        get :show, params: { id: project_id }
+        json = JSON.parse(response.body)
+        expect(json['error']).to include('Failed to fetch project')
+      end
+    end
+
     context 'when user is not authenticated' do
       before do
         sign_out user
       end
 
-      it 'returns unauthorized' do
+      it 'redirects to sign in' do
         get :show, params: { id: project_id }
-        expect(response).to have_http_status(:unauthorized)
+        expect(response).to have_http_status(:found)
       end
     end
   end
