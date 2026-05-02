@@ -14,7 +14,6 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import LogoutIcon from '@mui/icons-material/Logout';
 import RegionView from './po_generation/RegionView';
-import logo from '../images/FreedomPower_Horizontal_WhiteOrange.png';
 
 // Freedom Power Brand Colors
 const BRAND = {
@@ -44,6 +43,9 @@ const darkTheme = createTheme({
 const REGIONS = ['Austin', 'Dallas', 'Houston', 'San Antonio', 'Orlando', 'Tampa'];
 
 export default function Dashboard() {
+  // Get logo URL from data attribute set by Rails asset pipeline
+  const logoUrl = document.getElementById('react-root')?.getAttribute('data-logo-url');
+
   // Initialize selected region from URL query params
   const getInitialRegion = () => {
     const params = new URLSearchParams(window.location.search);
@@ -90,7 +92,7 @@ export default function Dashboard() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Box
                 component="img"
-                src={logo}
+                src={logoUrl}
                 alt="Freedom Power"
                 sx={{ height: 36 }}
               />

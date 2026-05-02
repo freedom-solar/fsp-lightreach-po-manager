@@ -51,5 +51,73 @@ RSpec.describe User, type: :model do
         }.not_to change(User, :count)
       end
     end
+
+    context 'with subdomain in email' do
+      let(:subdomain_email) { 'test@subdomain.gofreedompower.com' }
+
+      it 'rejects subdomain emails' do
+        user = User.from_google(uid: uid, email: subdomain_email, full_name: full_name)
+        expect(user).to be_nil
+      end
+    end
+
+    context 'with edge case emails' do
+      it 'handles uppercase domain' do
+        user = User.from_google(uid: uid, email: 'test@GOFREEDOMPOWER.COM', full_name: full_name)
+        expect(user).to be_nil # Regex is case-sensitive
+      end
+
+      it 'handles email with special characters' do
+        user = User.from_google(uid: uid, email: 'test+tag@gofreedompower.com', full_name: full_name)
+        expect(user).to be_persisted
+      end
+    end
+  end
+
+  describe 'dependent destroy' do
+    it 'destroys associated po_generation_jobs when user is destroyed' do
+      user = create(:user)
+      create(:po_generation_job, user: user)
+      create(:po_generation_job, user: user)
+
+      expect { user.destroy }.to change(PoGenerationJob, :count).by(-2)
+    end
+
+    it 'also destroys nested po_generation_logs through jobs' do
+      user = create(:user)
+      job = create(:po_generation_job, user: user)
+      create(:po_generation_log, po_generation_job: job)
+      create(:po_generation_log, po_generation_job: job)
+
+      expect { user.destroy }.to change(PoGenerationLog, :count).by(-2)
+    end
+  end
+
+  describe 'email normalization' do
+    it 'stores email in lowercase' do
+      email = 'TEST@gofreedompower.com'
+      user = User.from_google(uid: 'uid123', email: email, full_name: 'Test')
+      expect(user.email).to eq(email.downcase)
+    end
+
+    it 'trims whitespace from email automatically' do
+      user = create(:user, email: '  test@example.com  ')
+      expect(user.email).to eq('test@example.com')
+    end
+  end
+
+  describe 'uniqueness validation' do
+    let(:existing_user) { create(:user, email: 'test@example.com') }
+
+    it 'prevents duplicate emails' do
+      duplicate_user = User.new(email: existing_user.email)
+      expect(duplicate_user).not_to be_valid
+      expect(duplicate_user.errors[:email]).to include('has already been taken')
+    end
+
+    it 'is case insensitive for email uniqueness' do
+      duplicate_user = User.new(email: existing_user.email.upcase)
+      expect(duplicate_user).not_to be_valid
+    end
   end
 end
