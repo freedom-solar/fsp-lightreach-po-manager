@@ -156,7 +156,7 @@ export default function RegionView({ region }) {
               onClick={handleGenerateRegion}
               disabled={selectedProjects.length === 0}
             >
-              Generate POs for {selectedProjects.length} Selected Project{selectedProjects.length !== 1 ? 's' : ''}
+              GENERATE ALL POS FOR {region.toUpperCase()} & SEND TO CED
             </Button>
           </Box>
 
