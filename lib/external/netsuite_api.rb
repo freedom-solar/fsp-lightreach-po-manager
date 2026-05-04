@@ -111,10 +111,28 @@ module Netsuite
             post(path: "/record/v1/#{object}", body:, params:)
         end
 
-        def get_record(object:, id: nil, external_id: nil, params: {})
+        def get_record(object:, id: nil, external_id: nil, params: {}, retry_on_401: true)
             path = "/record/v1/#{object}/#{id}"
             path = "/record/v1/#{object}/eid:#{external_id}" if external_id
-            get(path:, params:)
+
+            # Skip retries when just checking record type (e.g., checking if item is inventory item)
+            if retry_on_401
+                get(path:, params:)
+            else
+                # Make single request without retries
+                uri_string = "#{@root_url}#{path}"
+                uri = URI(uri_string)
+                uri.query = URI.encode_www_form(params)
+
+                headers = Headers.new(url: uri_string, method: :GET, params:, credentials: @credentials).generate
+                response = HttpVerb.get(uri, headers:, limit: 1)
+
+                unless response.is_a?(Net::HTTPSuccess)
+                    raise_netsuite_error(response, method: 'GET', path: path, params: params)
+                end
+
+                JSON.parse(response.body)
+            end
         end
 
         def list_records(object:, params: {})
@@ -332,11 +350,17 @@ module Netsuite
             client = Client.new
             params = {}
             params[:expandSubResources] = true if @@allow_expanded_subresources.include? @object
-            client.get_record(object: @object, id:, params:)
+            # Skip 401 retries when we're just checking if record exists/has correct type
+            client.get_record(object: @object, id:, params:, retry_on_401: raise_on_not_found)
         rescue RuntimeError => e
             # Handle 404 errors gracefully if requested
             if !raise_on_not_found && e.message.include?('404') && e.message.include?('NONEXISTENT_ID')
                 Rails.logger.warn "[NetSuite] Record not found: #{@object} #{id} (404 NONEXISTENT_ID)"
+                return nil
+            end
+            # Handle 401 errors when checking record type - item exists but wrong type
+            if !raise_on_not_found && e.message.include?('401')
+                Rails.logger.warn "[NetSuite] Item #{id} is not a #{@object} (401 - wrong record type)"
                 return nil
             end
             raise
