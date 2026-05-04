@@ -413,11 +413,14 @@ class PoGenerationService
       quantity = item['quantity'].to_i
       next if quantity.zero?
 
+      part_number = inventory_item['itemId'] || inventory_item['name']
       po_items << {
         item_id: item_id,
-        part_number: inventory_item['itemId'] || inventory_item['name'],
+        part_number: part_number,
+        description: part_number,  # Use part number as description
         quantity: quantity,
         category: category,
+        category_name: category_name_for(category),
         so_line_number: item['line']
       }
     end
@@ -516,11 +519,14 @@ class PoGenerationService
       quantity = item['quantity'].to_i
       next if quantity.zero?
 
+      part_number = inventory_item['itemId'] || inventory_item['name']
       po_items << {
         item_id: item_id,
-        part_number: inventory_item['itemId'] || inventory_item['name'],
+        part_number: part_number,
+        description: part_number,  # Use part number as description
         quantity: quantity,
         category: category,
+        category_name: category_name_for(category),
         so_line_number: item['line']
       }
     end
@@ -530,7 +536,7 @@ class PoGenerationService
 
   def add_racking_quantities_to_so(project_id)
     log_progress("Running racking quantities worker for #{project_id}")
-    AddRackingQuantitiesToSoWorker.new.perform(project_id, skip_status_check: true)
+    AddRackingQuantitiesToSoWorker.new.perform(project_id, job_id: job_record.id, skip_status_check: true)
   rescue StandardError => e
     log_progress("Error adding racking quantities: #{e.message}", level: :warning)
   end
