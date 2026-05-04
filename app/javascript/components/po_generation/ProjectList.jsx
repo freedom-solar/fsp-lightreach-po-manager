@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -8,14 +8,97 @@ import {
   TableRow,
   Paper,
   Button,
+  ButtonGroup,
   Chip,
   Link,
   Box,
   Checkbox,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import EmailIcon from '@mui/icons-material/Email';
+import DescriptionIcon from '@mui/icons-material/Description';
+
+function ProjectActionButton({ project, onGenerateSingle }) {
+  const [anchorEl, setAnchorEl] = useState(null);
+  const open = Boolean(anchorEl);
+
+  const handleClick = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleGenerateAndSend = () => {
+    onGenerateSingle(project.id, { skipEmail: false });
+    handleClose();
+  };
+
+  const handleGenerateOnly = () => {
+    onGenerateSingle(project.id, { skipEmail: true });
+    handleClose();
+  };
+
+  // For projects that already have a PO, just show "Send PO to CED" button
+  if (project.has_po) {
+    return (
+      <Button
+        size="small"
+        variant="outlined"
+        startIcon={<PlayArrowIcon />}
+        onClick={() => onGenerateSingle(project.id, { skipEmail: false })}
+      >
+        Send PO to CED
+      </Button>
+    );
+  }
+
+  // For projects without a PO, show split button with options
+  return (
+    <>
+      <ButtonGroup variant="outlined" size="small">
+        <Button
+          startIcon={<PlayArrowIcon />}
+          onClick={handleGenerateAndSend}
+        >
+          Generate PO & Send to CED
+        </Button>
+        <Button
+          size="small"
+          onClick={handleClick}
+        >
+          <ArrowDropDownIcon />
+        </Button>
+      </ButtonGroup>
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={handleClose}
+      >
+        <MenuItem onClick={handleGenerateAndSend}>
+          <ListItemIcon>
+            <EmailIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Generate PO & Send to CED</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleGenerateOnly}>
+          <ListItemIcon>
+            <DescriptionIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Generate PO Only (No Email)</ListItemText>
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}
 
 export default function ProjectList({ projects, onGenerateSingle, selectedProjects, onToggleProject, onToggleAll }) {
   const formatDate = (dateString) => {
@@ -120,14 +203,10 @@ export default function ProjectList({ projects, onGenerateSingle, selectedProjec
                 )}
               </TableCell>
               <TableCell align="right">
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<PlayArrowIcon />}
-                  onClick={() => onGenerateSingle(project.id)}
-                >
-                  {project.has_po ? 'Send PO to CED' : 'Generate PO & Send to CED'}
-                </Button>
+                <ProjectActionButton
+                  project={project}
+                  onGenerateSingle={onGenerateSingle}
+                />
               </TableCell>
             </TableRow>
           ))}

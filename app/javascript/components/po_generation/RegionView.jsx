@@ -94,7 +94,9 @@ export default function RegionView({ region }) {
     }
   };
 
-  const handleGenerateSingle = async (projectId) => {
+  const handleGenerateSingle = async (projectId, options = {}) => {
+    const { skipEmail = false } = options;
+
     try {
       const response = await fetch('/api/v1/po_generation/project', {
         method: 'POST',
@@ -102,7 +104,10 @@ export default function RegionView({ region }) {
           'Content-Type': 'application/json',
           'X-CSRF-Token': document.querySelector('[name="csrf-token"]').content,
         },
-        body: JSON.stringify({ project_id: projectId }),
+        body: JSON.stringify({
+          project_id: projectId,
+          skip_email: skipEmail
+        }),
       });
 
       const data = await response.json();
