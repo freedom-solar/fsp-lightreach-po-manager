@@ -59,12 +59,12 @@ RSpec.describe PoGenerationWorker, type: :worker do
     context 'with skip_email option' do
       it 'does not send email when skip_email is true' do
         expect(email_service).not_to receive(:send_batch_email)
-        described_class.new.perform(job.id, skip_email: true)
+        described_class.new.perform(job.id, true)
       end
 
       it 'passes skip_email to service' do
         expect(service).to receive(:generate_po_for_project).with(project_id, skip_email: true)
-        described_class.new.perform(job.id, skip_email: true)
+        described_class.new.perform(job.id, true)
       end
     end
 

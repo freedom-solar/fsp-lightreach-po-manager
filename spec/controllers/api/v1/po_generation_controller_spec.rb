@@ -158,12 +158,12 @@ RSpec.describe Api::V1::PoGenerationController, type: :controller do
       end
 
       it 'passes skip_email to worker when true' do
-        expect(PoGenerationWorker).to receive(:perform_async).with(anything, skip_email: true)
+        expect(PoGenerationWorker).to receive(:perform_async).with(anything, true)
         post :generate_single, params: { project_id: project_id, skip_email: 'true' }
       end
 
       it 'passes skip_email to worker when boolean true' do
-        expect(PoGenerationWorker).to receive(:perform_async).with(anything, skip_email: true)
+        expect(PoGenerationWorker).to receive(:perform_async).with(anything, true)
         post :generate_single, params: { project_id: project_id, skip_email: true }
       end
     end

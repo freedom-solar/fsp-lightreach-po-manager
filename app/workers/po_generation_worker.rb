@@ -3,7 +3,7 @@ class PoGenerationWorker
 
   sidekiq_options queue: 'po_generation', retry: 0
 
-  def perform(job_id, skip_email: false)
+  def perform(job_id, skip_email = false)
     job = PoGenerationJob.find(job_id)
 
     # Update status to running

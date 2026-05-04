@@ -71,7 +71,7 @@ module Api
         )
 
         # Enqueue worker
-        PoGenerationWorker.perform_async(job.id, skip_email: skip_email)
+        PoGenerationWorker.perform_async(job.id, skip_email)
 
         render_success({
           job_id: job.id,
