@@ -556,7 +556,14 @@ class ProjectSunriseApi
 
             # Configure S3 client with SSL options to handle certificate issues
             # Disable SSL verification in development to bypass CRL validation issues
+            # IMPORTANT: Must pass credentials explicitly - don't rely on instance profile
+            credentials = Aws::Credentials.new(
+                Rails.application.credentials.aws_key_id,
+                Rails.application.credentials.aws_secret_key
+            )
             s3 = Aws::S3::Client.new(
+                credentials: credentials,
+                region: ENV['AWS_REGION'] || 'us-west-2',
                 http_open_timeout: 15,
                 http_read_timeout: 60,
                 retry_limit: 3,
