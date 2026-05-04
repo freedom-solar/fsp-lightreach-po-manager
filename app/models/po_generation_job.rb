@@ -33,6 +33,14 @@ class PoGenerationJob < ApplicationRecord
     update_columns(locked_at: nil, locked_by: nil)
   end
 
+  def running?
+    status == 'running'
+  end
+
+  def pending?
+    status == 'pending'
+  end
+
   def completed?
     status == 'completed'
   end
