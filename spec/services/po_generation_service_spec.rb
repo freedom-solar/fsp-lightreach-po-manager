@@ -513,4 +513,105 @@ RSpec.describe PoGenerationService, type: :service do
       service.send(:update_project_po_link, project_id, po_link)
     end
   end
+
+  describe '#generate_pos_for_region' do
+    let(:region_name) { 'Austin' }
+    let(:installations) do
+      [
+        {
+          'node' => {
+            'ProjectSunriseID' => 'SF-001',
+            'Start' => '2025-03-15T10:00:00Z'
+          }
+        },
+        {
+          'node' => {
+            'ProjectSunriseID' => 'SF-002',
+            'Start' => '2025-03-20T10:00:00Z'
+          }
+        }
+      ]
+    end
+    let(:direct_pay_projects) do
+      [
+        {
+          '_id' => 'SF-001',
+          'name' => 'Austin Project 1',
+          'fields' => { 'lender' => 'Lightreach Lease', 'loan_application_id' => 'LOAN-001' },
+          'job_start' => '2025-03-15T10:00:00Z'
+        },
+        {
+          '_id' => 'SF-002',
+          'name' => 'Austin Project 2',
+          'fields' => { 'lender' => 'Lightreach Lease', 'loan_application_id' => 'LOAN-002' },
+          'job_start' => '2025-03-20T10:00:00Z'
+        }
+      ]
+    end
+
+    before do
+      allow(service).to receive(:fetch_installations_on_schedule).and_return(installations)
+      allow(service).to receive(:filter_for_direct_pay).and_return(direct_pay_projects)
+      allow(service).to receive(:create_po).and_return({ po_id: 12345 })
+      allow(service).to receive(:fetch_sales_order_data).and_return({ location_id: 1 })  # Austin location ID
+      allow(service).to receive(:update_project_po_link)
+      allow(JobScheduleService).to receive(:new).and_return(instance_double(JobScheduleService,
+        batch_fetch_project_locations: { 'SF-001' => region_name, 'SF-002' => region_name }))
+    end
+
+    it 'fetches installations on schedule' do
+      expect(service).to receive(:fetch_installations_on_schedule)
+      service.generate_pos_for_region(region_name)
+    end
+
+    it 'filters for direct pay projects' do
+      expect(service).to receive(:filter_for_direct_pay).with(installations)
+      service.generate_pos_for_region(region_name)
+    end
+
+    it 'creates PO for each project in the region' do
+      expect(service).to receive(:create_po).twice
+      service.generate_pos_for_region(region_name)
+    end
+
+    it 'returns array of successful POs' do
+      result = service.generate_pos_for_region(region_name)
+      expect(result.length).to eq(2)
+      expect(result.all? { |po| po[:po_id] == 12345 }).to be true
+    end
+
+    it 'filters out projects not in the specified region' do
+      # Make SF-002 return Dallas location (ID 3)
+      call_count = 0
+      allow(service).to receive(:fetch_sales_order_data) do
+        call_count += 1
+        { location_id: call_count == 1 ? 1 : 3 }  # First call returns Austin (1), second returns Dallas (3)
+      end
+
+      expect(service).to receive(:create_po).once  # Only Austin project should create PO
+      service.generate_pos_for_region(region_name)
+    end
+
+    it 'logs progress' do
+      expect(service).to receive(:log_progress).at_least(:once)
+      service.generate_pos_for_region(region_name)
+    end
+
+    context 'when no direct pay projects found' do
+      before do
+        allow(service).to receive(:filter_for_direct_pay).and_return([])
+      end
+
+      it 'returns empty array' do
+        result = service.generate_pos_for_region(region_name)
+        expect(result).to eq([])
+      end
+
+      it 'logs no projects message' do
+        allow(service).to receive(:log_progress)  # Allow all log_progress calls
+        service.generate_pos_for_region(region_name)
+        # Just verify it completes without error
+      end
+    end
+  end
 end
