@@ -371,7 +371,8 @@ GEM
       erb
       psych (>= 4.0.0)
       tsort
-    redis (4.8.1)
+    redis (5.4.1)
+      redis-client (>= 0.22.0)
     redis-client (0.28.0)
       connection_pool
     regexp_parser (2.12.0)
@@ -551,7 +552,7 @@ DEPENDENCIES
   prawn-table
   puma (>= 5.0)
   rails (~> 7.2.3)
-  redis (~> 4.0)
+  redis (~> 5.4)
   rspec-rails (~> 6.0)
   rubocop-rails-omakase
   savon

@@ -13,7 +13,7 @@ gem "jsbundling-rails"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
 gem "jbuilder"
 # Use Redis for Action Cable and Sidekiq
-gem "redis", "~> 4.0"
+gem "redis", "~> 5.4"
 
 # Background job processing
 gem "sidekiq"
