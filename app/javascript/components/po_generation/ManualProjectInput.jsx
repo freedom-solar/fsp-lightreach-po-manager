@@ -32,7 +32,7 @@ export default function ManualProjectInput({ onGenerate }) {
       </Typography>
 
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-        <Box display="flex" gap={2} alignItems="flex-start" mb={3}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', mb: 3 }}>
           <TextField
             label="Project ID"
             placeholder="e.g., proj_abc123"
