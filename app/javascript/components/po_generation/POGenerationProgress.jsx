@@ -107,7 +107,7 @@ export default function POGenerationProgress({ jobId, onComplete }) {
   return (
     <Card>
       <CardContent>
-        <Box display="flex" alignItems="center" mb={2}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           {getStatusIcon()}
           <Typography variant="h6">
             PO Generation Progress - Job #{jobId}
@@ -157,7 +157,7 @@ export default function POGenerationProgress({ jobId, onComplete }) {
         <LogViewer logs={logs} />
 
         {job?.status === 'completed' && (
-          <Box mt={2} display="flex" justifyContent="flex-end">
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
             <Button variant="outlined" onClick={onComplete}>
               Back to Dashboard
             </Button>
