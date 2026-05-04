@@ -35,8 +35,9 @@ class AddRackingQuantitiesToSoWorker
     { search_string: 'PF-SF70', item_id: PF_SF70_ITEM_ID, item_name: 'PF-SF70' }
   ].freeze
 
-  def perform(project_id, skip_status_check: false)
-    puts "Processing project #{project_id} for racking quantities update"
+  def perform(project_id, job_id: nil, skip_status_check: false)
+    @job_id = job_id
+    log_progress("Processing project #{project_id} for racking quantities update")
 
     # Get BOM file from Sunrise
     bom_data = fetch_bom_file(project_id)
@@ -46,14 +47,14 @@ class AddRackingQuantitiesToSoWorker
     racking_items = parse_racking_items_from_bom(bom_data['file'])
     return log_error(project_id, 'No Pegasus racking items found in BOM') if racking_items.empty?
 
-    puts "Found #{racking_items.size} Pegasus racking items in BOM"
-    racking_items.each { |item| puts "  #{item[:part_number]}: #{item[:quantity]}" }
+    log_progress("Found #{racking_items.size} Pegasus racking items in BOM")
+    racking_items.each { |item| log_progress("  #{item[:part_number]}: #{item[:quantity]} EA") }
 
     # Get NetSuite Sales Order ID from HubSpot Deal
     sales_order_id = fetch_sales_order_id(project_id)
     return log_error(project_id, 'Could not find NetSuite Sales Order ID') unless sales_order_id
 
-    puts "Found NetSuite Sales Order ID: #{sales_order_id}"
+    log_progress("Found NetSuite Sales Order ID: #{sales_order_id}")
 
     # Fetch Sales Order from NetSuite
     sales_order = Netsuite::SalesOrder.find(sales_order_id)
@@ -80,13 +81,46 @@ class AddRackingQuantitiesToSoWorker
       parse_and_add_item(bom_data['file'], project_id, sales_order_id, **config)
     end
 
-    puts "Successfully updated racking quantities for project #{project_id}"
+    log_progress("Successfully updated racking quantities for project #{project_id}", level: :success)
   rescue StandardError => e
     log_error(project_id, "Error: #{e.message}\n#{e.backtrace.join("\n")}")
     raise
   end
 
   private
+
+  # Broadcast log message via ActionCable (if job_id is provided) and to console
+  def log_progress(message, level: :info)
+    puts message
+
+    return unless @job_id
+
+    timestamp = Time.current.strftime("%H:%M:%S")
+    log_entry = {
+      timestamp: timestamp,
+      level: level.to_s,
+      message: message,
+      job_id: @job_id
+    }
+
+    # Save to database
+    job = PoGenerationJob.find_by(id: @job_id)
+    if job
+      PoGenerationLog.create!(
+        po_generation_job: job,
+        level: level.to_s,
+        message: message
+      )
+
+      # Broadcast to ActionCable
+      ActionCable.server.broadcast(
+        "po_generation_#{@job_id}",
+        log_entry
+      )
+    end
+  rescue StandardError => e
+    puts "Warning: Failed to log progress: #{e.message}"
+  end
 
   def fetch_bom_file(project_id)
     ProjectSunriseApi.get_file(project_id, 'BOM')
@@ -151,8 +185,8 @@ class AddRackingQuantitiesToSoWorker
     end
 
     if items.any?
-      puts "Found #{items.size} #{item_name} item(s) in BOM"
-      items.each { |item| puts "  #{item_name}: #{item[:quantity]}" }
+      log_progress("Found #{items.size} #{item_name} item(s) in BOM")
+      items.each { |item| log_progress("  #{item_name}: #{item[:quantity]} EA") }
     end
 
     items
@@ -166,7 +200,7 @@ class AddRackingQuantitiesToSoWorker
 
     total_quantity = bom_items.sum { |item| item[:quantity] }
 
-    puts "Adding #{item_name} (qty: #{total_quantity}) as new line to Sales Order #{sales_order_id}"
+    log_progress("Adding #{item_name} (qty: #{total_quantity}) to Sales Order #{sales_order_id}")
 
     sales_order = Netsuite::SalesOrder.find(sales_order_id)
     return log_error(project_id, "Could not fetch Sales Order for #{item_name} update") unless sales_order
@@ -179,11 +213,11 @@ class AddRackingQuantitiesToSoWorker
 
     if existing_item
       if item_fulfilled?(existing_item)
-        puts "  #{item_name} already fulfilled (line #{existing_item['line']}, " \
-             "qty fulfilled: #{existing_item['quantityFulfilled']}), skipping"
+        log_progress("  #{item_name} already fulfilled (line #{existing_item['line']}, " \
+             "qty fulfilled: #{existing_item['quantityFulfilled']}), skipping", level: :warning)
         return
       end
-      puts "  #{item_name} already exists on SO (line #{existing_item['line']}), updating quantity"
+      log_progress("  #{item_name} already exists on SO line #{existing_item['line']}, updating qty to #{total_quantity}")
       existing_item['quantity'] = total_quantity
     else
       new_item = {
@@ -192,7 +226,7 @@ class AddRackingQuantitiesToSoWorker
         amount: 0
       }.merge(extract_class_and_location(items))
       items << new_item
-      puts "  Adding new line item for #{item_name}"
+      log_progress("  Added new line item: #{item_name} (qty: #{total_quantity})", level: :success)
     end
 
     body = {
@@ -202,7 +236,7 @@ class AddRackingQuantitiesToSoWorker
     }
 
     result = Netsuite::SalesOrder.update(sales_order_id, body)
-    puts "#{item_name} update result: #{result}"
+    log_progress("  #{item_name} updated successfully", level: :success)
     result
   rescue StandardError => e
     log_error(project_id, "Error adding #{item_name} to SO: #{e.message}")
@@ -214,7 +248,7 @@ class AddRackingQuantitiesToSoWorker
 
     total_quantity = envoy_items.sum { |item| item[:quantity] }
 
-    puts "Adding Enphase Envoy (qty: #{total_quantity}) as new line to Sales Order #{sales_order_id}"
+    log_progress("Adding Enphase Envoy (qty: #{total_quantity}) to Sales Order #{sales_order_id}")
 
     sales_order = Netsuite::SalesOrder.find(sales_order_id)
     return log_error(project_id, 'Could not fetch Sales Order for Envoy update') unless sales_order
@@ -228,11 +262,11 @@ class AddRackingQuantitiesToSoWorker
     if existing_envoy
       # Skip if item has already been fulfilled
       if item_fulfilled?(existing_envoy)
-        puts "  Enphase Envoy already fulfilled (line #{existing_envoy['line']}, " \
-             "qty fulfilled: #{existing_envoy['quantityFulfilled']}), skipping"
+        log_progress("  Enphase Envoy already fulfilled (line #{existing_envoy['line']}, " \
+             "qty fulfilled: #{existing_envoy['quantityFulfilled']}), skipping", level: :warning)
         return
       end
-      puts "  Enphase Envoy already exists on SO (line #{existing_envoy['line']}), updating quantity"
+      log_progress("  Enphase Envoy already exists on SO line #{existing_envoy['line']}, updating qty to #{total_quantity}")
       existing_envoy['quantity'] = total_quantity
     else
       new_item = {
@@ -241,7 +275,7 @@ class AddRackingQuantitiesToSoWorker
         amount: 0
       }.merge(extract_class_and_location(items))
       items << new_item
-      puts '  Adding new line item for Enphase Envoy'
+      log_progress("  Added new line item: Enphase Envoy (qty: #{total_quantity})", level: :success)
     end
 
     # Also add ENP CT-200-SPLIT (Item 949) - required with Enphase Envoy
@@ -251,10 +285,10 @@ class AddRackingQuantitiesToSoWorker
 
     if existing_ct_split
       if item_fulfilled?(existing_ct_split)
-        puts "  ENP CT-200-SPLIT already fulfilled (line #{existing_ct_split['line']}, " \
-             "qty fulfilled: #{existing_ct_split['quantityFulfilled']}), skipping"
+        log_progress("  ENP CT-200-SPLIT already fulfilled (line #{existing_ct_split['line']}, " \
+             "qty fulfilled: #{existing_ct_split['quantityFulfilled']}), skipping", level: :warning)
       else
-        puts "  ENP CT-200-SPLIT already exists on SO (line #{existing_ct_split['line']}), updating quantity"
+        log_progress("  ENP CT-200-SPLIT already exists on SO line #{existing_ct_split['line']}, updating qty to #{total_quantity}")
         existing_ct_split['quantity'] = total_quantity
       end
     else
@@ -264,7 +298,7 @@ class AddRackingQuantitiesToSoWorker
         amount: 0
       }.merge(extract_class_and_location(items))
       items << ct_split_item
-      puts '  Adding new line item for ENP CT-200-SPLIT'
+      log_progress("  Added new line item: ENP CT-200-SPLIT (qty: #{total_quantity})", level: :success)
     end
 
     body = {
@@ -274,7 +308,7 @@ class AddRackingQuantitiesToSoWorker
     }
 
     result = Netsuite::SalesOrder.update(sales_order_id, body)
-    puts "Enphase Envoy update result: #{result}"
+    log_progress("  Enphase Envoy items updated successfully", level: :success)
     result
   rescue StandardError => e
     log_error(project_id, "Error adding Envoy to SO: #{e.message}")
@@ -433,19 +467,14 @@ class AddRackingQuantitiesToSoWorker
     so_items.each do |item|
       item_id = item.dig('item', 'id')
       next unless item_id
-      next if cache[item_id] # Skip if already cached
+      next if cache.key?(item_id) # Skip if already cached (even if value is nil)
 
-      begin
-        inventory_item = Netsuite::InventoryItem.find(item_id)
-        cache[item_id] = inventory_item
-      rescue StandardError => e
-        # Skip logging for non-inventory items (serviceitem, discountitem, etc.)
-        puts "Warning: Could not fetch inventory item #{item_id}: #{e.message}" unless e.message.include?('The record you are attempting to load has a different type')
-        cache[item_id] = nil
-      end
+      # Use raise_on_not_found: false to skip retries and return nil for non-inventory items
+      inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
+      cache[item_id] = inventory_item
     end
 
-    puts "Cached #{cache.size} inventory items"
+    log_progress("Cached #{cache.size} inventory items")
     cache
   end
 

@@ -100,6 +100,12 @@ class PoGenerationService
     # Create POs for region projects
     created_pos = []
     region_projects.each_with_index do |project, index|
+      # Check if job was cancelled
+      if job_record.reload.cancelled?
+        log_progress("Job was cancelled, stopping region PO generation", level: :warning)
+        break
+      end
+
       project_id = project['_id']
       log_progress("Processing project #{index + 1}/#{region_projects.length}: #{project_id}")
 
@@ -133,6 +139,12 @@ class PoGenerationService
 
     created_pos = []
     projects.each_with_index do |project, index|
+      # Check if job was cancelled
+      if job_record.reload.cancelled?
+        log_progress("Job was cancelled, stopping batch PO generation", level: :warning)
+        break
+      end
+
       project_id = project['_id']
       project['job_start'] = job_starts[project_id]
 
@@ -393,7 +405,8 @@ class PoGenerationService
       item_id = item.dig('item', 'id')
       next unless item_id
 
-      inventory_item = Netsuite::InventoryItem.find(item_id)
+      # Use raise_on_not_found: false to skip retries and return nil for non-inventory items
+      inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
       next unless inventory_item.is_a?(Hash)
 
       category = inventory_item.dig('custitem1', 'id')&.to_i
@@ -407,12 +420,6 @@ class PoGenerationService
         category: category,
         so_line_number: item['line']
       }
-    rescue StandardError => e
-      # Skip logging for non-inventory items (serviceitem, discountitem, etc.)
-      unless e.message.include?('The record you are attempting to load has a different type')
-        log_progress("Could not fetch inventory item #{item_id}: #{e.message}", level: :warning)
-      end
-      next
     end
 
     po_items
@@ -499,30 +506,23 @@ class PoGenerationService
       item_id = item.dig('item', 'id')
       next unless item_id
 
-      begin
-        inventory_item = Netsuite::InventoryItem.find(item_id)
-        next unless inventory_item.is_a?(Hash)
+      # Use raise_on_not_found: false to skip retries and return nil for non-inventory items
+      inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
+      next unless inventory_item.is_a?(Hash)
 
-        category = inventory_item.dig('custitem1', 'id')&.to_i
-        next unless eligible_categories.include?(category)
+      category = inventory_item.dig('custitem1', 'id')&.to_i
+      next unless eligible_categories.include?(category)
 
-        quantity = item['quantity'].to_i
-        next if quantity.zero?
+      quantity = item['quantity'].to_i
+      next if quantity.zero?
 
-        po_items << {
-          item_id: item_id,
-          part_number: inventory_item['itemId'] || inventory_item['name'],
-          quantity: quantity,
-          category: category,
-          so_line_number: item['line']
-        }
-      rescue StandardError => e
-        # Skip logging for non-inventory items (serviceitem, discountitem, etc.)
-        unless e.message.include?('The record you are attempting to load has a different type')
-          log_progress("Could not fetch inventory item #{item_id}: #{e.message}", level: :warning)
-        end
-        next
-      end
+      po_items << {
+        item_id: item_id,
+        part_number: inventory_item['itemId'] || inventory_item['name'],
+        quantity: quantity,
+        category: category,
+        so_line_number: item['line']
+      }
     end
 
     po_items
@@ -546,13 +546,12 @@ class PoGenerationService
       item_id = item.dig('item', 'id')
       next false unless item_id
 
-      begin
-        inventory_item = Netsuite::InventoryItem.find(item_id)
-        part_number = inventory_item['itemId'] || inventory_item['name']
-        part_number == 'PSR-M168-US (DOMESTIC)'
-      rescue StandardError
-        false
-      end
+      # Use raise_on_not_found: false to skip retries and return nil for non-inventory items
+      inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
+      next false unless inventory_item.is_a?(Hash)
+
+      part_number = inventory_item['itemId'] || inventory_item['name']
+      part_number == 'PSR-M168-US (DOMESTIC)'
     end
 
     return true unless psr_m168_item
