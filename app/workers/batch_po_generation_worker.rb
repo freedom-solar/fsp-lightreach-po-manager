@@ -14,6 +14,13 @@ class BatchPoGenerationWorker
     )
 
     service = PoGenerationService.new(job)
+
+    # Check if job was cancelled before we started
+    if job.reload.cancelled?
+      service.log_progress("Job was cancelled before processing started", level: :warning)
+      return
+    end
+
     service.log_progress("Starting PO generation for #{job.job_type} job")
 
     # Generate POs based on job type
@@ -37,6 +44,12 @@ class BatchPoGenerationWorker
                    []
                  end
 
+    # Check if job was cancelled during processing
+    if job.reload.cancelled?
+      service.log_progress("Job was cancelled during processing", level: :warning)
+      return
+    end
+
     # Update job with results
     job.update!(
       status: 'completed',
@@ -46,7 +59,27 @@ class BatchPoGenerationWorker
       completed_at: Time.current
     )
 
+    # Broadcast status update to frontend via ActionCable
+    ActionCable.server.broadcast(
+      "po_generation_#{job.id}",
+      {
+        type: 'status_update',
+        job_id: job.id,
+        status: 'completed',
+        total_projects: job.total_projects,
+        successful_pos: po_results.length,
+        failed_pos: job.total_projects - po_results.length,
+        completed_at: job.completed_at
+      }
+    )
+
     service.log_progress("Job completed: #{po_results.length} POs created successfully", level: :success)
+
+    # Check if job was cancelled before sending emails
+    if job.reload.cancelled?
+      service.log_progress("Job was cancelled before sending emails", level: :warning)
+      return
+    end
 
     # Send batch email notification
     if po_results.any?
@@ -62,11 +95,27 @@ class BatchPoGenerationWorker
       service.log_progress("Job failed: #{e.message}", level: :error)
     end
 
-    job.update!(
-      status: 'failed',
-      error_message: e.message,
-      completed_at: Time.current
-    ) if job
+    if job
+      job.update!(
+        status: 'failed',
+        error_message: e.message,
+        completed_at: Time.current
+      )
+
+      # Broadcast status update to frontend via ActionCable
+      ActionCable.server.broadcast(
+        "po_generation_#{job.id}",
+        {
+          type: 'status_update',
+          job_id: job.id,
+          status: 'failed',
+          total_projects: job.total_projects,
+          successful_pos: job.successful_pos || 0,
+          failed_pos: job.failed_pos || 0,
+          completed_at: job.completed_at
+        }
+      )
+    end
     raise
   ensure
     job.update!(locked_at: nil, locked_by: nil) if job&.persisted?

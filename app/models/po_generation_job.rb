@@ -48,4 +48,8 @@ class PoGenerationJob < ApplicationRecord
   def failed?
     status == 'failed'
   end
+
+  def cancelled?
+    failed? && error_message == 'Job cancelled by user'
+  end
 end

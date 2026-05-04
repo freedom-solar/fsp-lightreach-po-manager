@@ -328,16 +328,16 @@ class AddRackingQuantitiesToSoWorker
     if hdk_items.any?
       # HDK item present - add or update Combiner-WIFI-5
       total_quantity = hdk_items.sum { |item| item[:quantity] }
-      puts "Adding/updating Combiner-WIFI-5 (qty: #{total_quantity}) on Sales Order #{sales_order_id}"
+      log_progress("Adding/updating Combiner-WIFI-5 (qty: #{total_quantity}) on Sales Order #{sales_order_id}")
 
       if existing_combiner
         # Skip if item has already been fulfilled
         if item_fulfilled?(existing_combiner)
-          puts "  Combiner-WIFI-5 already fulfilled (line #{existing_combiner['line']}, " \
-               "qty fulfilled: #{existing_combiner['quantityFulfilled']}), skipping"
+          log_progress("  Combiner-WIFI-5 already fulfilled (line #{existing_combiner['line']}, " \
+               "qty fulfilled: #{existing_combiner['quantityFulfilled']}), skipping", level: :warning)
           return
         end
-        puts "  Combiner-WIFI-5 already exists on SO (line #{existing_combiner['line']}), updating quantity"
+        log_progress("  Combiner-WIFI-5 already exists on SO line #{existing_combiner['line']}, updating qty to #{total_quantity}")
         existing_combiner['quantity'] = total_quantity
       else
         new_item = {
@@ -346,19 +346,19 @@ class AddRackingQuantitiesToSoWorker
           amount: 0
         }.merge(extract_class_and_location(items))
         items << new_item
-        puts '  Adding new line item for Combiner-WIFI-5'
+        log_progress("  Added new line item: Combiner-WIFI-5 (qty: #{total_quantity})", level: :success)
       end
     elsif existing_combiner
       # Skip removal if item has already been fulfilled
       if item_fulfilled?(existing_combiner)
-        puts "  Combiner-WIFI-5 already fulfilled (line #{existing_combiner['line']}), cannot remove"
+        log_progress("  Combiner-WIFI-5 already fulfilled (line #{existing_combiner['line']}), cannot remove", level: :warning)
         return
       end
       # HDK item not present - remove Combiner-WIFI-5 if it exists
-      puts "Removing Combiner-WIFI-5 from Sales Order #{sales_order_id} (no X-IQ-AM1-240-5-HDK in BOM)"
+      log_progress("Removing Combiner-WIFI-5 from Sales Order #{sales_order_id} (no X-IQ-AM1-240-5-HDK in BOM)")
       items.reject! { |item| item.dig('item', 'id').to_s == COMBINER_WIFI_5_ITEM_ID }
     else
-      puts 'No Combiner-WIFI-5 to remove (not present on SO)'
+      log_progress('No Combiner-WIFI-5 to remove (not present on SO)')
       return
     end
 
@@ -370,7 +370,7 @@ class AddRackingQuantitiesToSoWorker
 
     # Use replace_item: true to ensure items can be removed, not just merged
     result = Netsuite::SalesOrder.update(sales_order_id, body, replace_item: true)
-    puts "Combiner-WIFI-5 update result: #{result}"
+    log_progress("  Combiner-WIFI-5 updated successfully", level: :success)
     result
   rescue StandardError => e
     log_error(project_id, "Error handling Combiner-WIFI on SO: #{e.message}")
