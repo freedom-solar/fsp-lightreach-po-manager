@@ -50,7 +50,7 @@ RSpec.describe EmailNotificationService, type: :service do
         # Mock service methods
         allow_any_instance_of(PoGenerationService).to receive(:upload_po_to_lightreach)
         allow_any_instance_of(PoGenerationService).to receive(:generate_location_summary_pdf).and_return("SUMMARY_PDF")
-        allow(Lightreach::DirectPayMailer).to receive_message_chain(:regional_pos_created, :deliver_now)
+        allow(Lightreach::DirectPayMailer).to receive_message_chain(:regional_pos_created, :send_google)
 
         service.send_batch_email
       end
@@ -62,7 +62,7 @@ RSpec.describe EmailNotificationService, type: :service do
           .with(hash_including(po_id: 12346, lightreach_account_id: 'LR-124'), mock_pdf_binary)
         allow_any_instance_of(PoGenerationService).to receive(:generate_location_summary_pdf).and_return("SUMMARY_PDF")
 
-        allow(Lightreach::DirectPayMailer).to receive_message_chain(:regional_pos_created, :deliver_now)
+        allow(Lightreach::DirectPayMailer).to receive_message_chain(:regional_pos_created, :send_google)
 
         service.send_batch_email(test_mode: false)
       end
@@ -71,7 +71,7 @@ RSpec.describe EmailNotificationService, type: :service do
         expect_any_instance_of(PoGenerationService).not_to receive(:upload_po_to_lightreach)
         allow_any_instance_of(PoGenerationService).to receive(:generate_location_summary_pdf).and_return("SUMMARY_PDF")
 
-        allow(Lightreach::DirectPayMailer).to receive_message_chain(:regional_pos_created, :deliver_now)
+        allow(Lightreach::DirectPayMailer).to receive_message_chain(:regional_pos_created, :send_google)
 
         service.send_batch_email(test_mode: true)
       end
@@ -83,11 +83,11 @@ RSpec.describe EmailNotificationService, type: :service do
         # Should send 2 emails (one for Austin, one for Dallas)
         expect(Lightreach::DirectPayMailer).to receive(:regional_pos_created)
           .with(hash_including(region: 'Austin'))
-          .and_return(double(deliver_now: true))
+          .and_return(double(send_google: true))
 
         expect(Lightreach::DirectPayMailer).to receive(:regional_pos_created)
           .with(hash_including(region: 'Dallas'))
-          .and_return(double(deliver_now: true))
+          .and_return(double(send_google: true))
 
         service.send_batch_email
       end
@@ -103,7 +103,7 @@ RSpec.describe EmailNotificationService, type: :service do
           .with(array_including(hash_including(location_name: 'Dallas')), 'Dallas')
           .and_return("DALLAS_SUMMARY_PDF")
 
-        allow(Lightreach::DirectPayMailer).to receive_message_chain(:regional_pos_created, :deliver_now)
+        allow(Lightreach::DirectPayMailer).to receive_message_chain(:regional_pos_created, :send_google)
 
         service.send_batch_email
       end
@@ -161,7 +161,7 @@ RSpec.describe EmailNotificationService, type: :service do
       expect(Netsuite::PurchaseOrder).to receive(:fetch_pdf_binary).with(12345).and_return(mock_pdf_binary)
 
       allow_any_instance_of(PoGenerationService).to receive(:upload_po_to_lightreach)
-      allow(Lightreach::DirectPayMailer).to receive_message_chain(:single_po_created, :deliver_now)
+      allow(Lightreach::DirectPayMailer).to receive_message_chain(:single_po_created, :send_google)
 
       service.send_single_email(po_result)
     end
@@ -170,7 +170,7 @@ RSpec.describe EmailNotificationService, type: :service do
       expect_any_instance_of(PoGenerationService).to receive(:upload_po_to_lightreach)
         .with(hash_including(po_id: 12345, lightreach_account_id: 'LR-123'), mock_pdf_binary)
 
-      allow(Lightreach::DirectPayMailer).to receive_message_chain(:single_po_created, :deliver_now)
+      allow(Lightreach::DirectPayMailer).to receive_message_chain(:single_po_created, :send_google)
 
       service.send_single_email(po_result)
     end
@@ -180,7 +180,7 @@ RSpec.describe EmailNotificationService, type: :service do
 
       expect_any_instance_of(PoGenerationService).not_to receive(:upload_po_to_lightreach)
 
-      allow(Lightreach::DirectPayMailer).to receive_message_chain(:single_po_created, :deliver_now)
+      allow(Lightreach::DirectPayMailer).to receive_message_chain(:single_po_created, :send_google)
 
       service.send_single_email(po_result_without_account)
     end
@@ -194,7 +194,7 @@ RSpec.describe EmailNotificationService, type: :service do
           pdf_binary: mock_pdf_binary,
           cc_email: nil
         ))
-        .and_return(double(deliver_now: true))
+        .and_return(double(send_google: true))
 
       service.send_single_email(po_result)
     end
@@ -204,7 +204,7 @@ RSpec.describe EmailNotificationService, type: :service do
 
       expect(Lightreach::DirectPayMailer).to receive(:single_po_created)
         .with(hash_including(cc_email: 'test@example.com'))
-        .and_return(double(deliver_now: true))
+        .and_return(double(send_google: true))
 
       service.send_single_email(po_result, cc_email: 'test@example.com')
     end

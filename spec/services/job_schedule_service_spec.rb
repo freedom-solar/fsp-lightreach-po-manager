@@ -2,8 +2,8 @@ require 'rails_helper'
 
 RSpec.describe JobScheduleService do
   let(:service) { described_class.new }
-  let(:start_time) { Time.now.end_of_week }
-  let(:end_time) { Time.now.end_of_week + 7.days }
+  let(:start_time) { Time.now.beginning_of_day }
+  let(:end_time) { (Time.now + 1.week).end_of_week }
 
   describe '#fetch_direct_pay_on_schedule' do
     let(:installation_jobs) do

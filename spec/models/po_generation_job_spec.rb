@@ -173,6 +173,47 @@ RSpec.describe PoGenerationJob, type: :model do
     end
   end
 
+  describe '#running?' do
+    it 'returns true when status is running' do
+      job = create(:po_generation_job, :running)
+      expect(job.running?).to be true
+    end
+
+    it 'returns false when status is not running' do
+      job = create(:po_generation_job, status: 'completed')
+      expect(job.running?).to be false
+    end
+  end
+
+  describe '#pending?' do
+    it 'returns true when status is pending' do
+      job = create(:po_generation_job, status: 'pending')
+      expect(job.pending?).to be true
+    end
+
+    it 'returns false when status is not pending' do
+      job = create(:po_generation_job, status: 'running')
+      expect(job.pending?).to be false
+    end
+  end
+
+  describe '#cancelled?' do
+    it 'returns true when job is failed with cancellation message' do
+      job = create(:po_generation_job, status: 'failed', error_message: 'Job cancelled by user')
+      expect(job.cancelled?).to be true
+    end
+
+    it 'returns false when job is failed with different error message' do
+      job = create(:po_generation_job, status: 'failed', error_message: 'Some other error')
+      expect(job.cancelled?).to be false
+    end
+
+    it 'returns false when job is not failed' do
+      job = create(:po_generation_job, status: 'completed')
+      expect(job.cancelled?).to be false
+    end
+  end
+
   describe 'status helpers' do
     it 'identifies pending jobs' do
       job = create(:po_generation_job, status: 'pending')

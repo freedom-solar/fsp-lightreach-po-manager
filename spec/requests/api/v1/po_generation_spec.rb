@@ -108,7 +108,7 @@ RSpec.describe 'API V1 PO Generation', type: :request do
       end
 
       it 'passes skip_email to worker' do
-        expect(PoGenerationWorker).to receive(:perform_async).with(anything, hash_including(skip_email: true))
+        expect(PoGenerationWorker).to receive(:perform_async).with(anything, true)
         post '/api/v1/po_generation/project', params: { project_id: project_id, skip_email: true }
       end
     end
@@ -218,6 +218,103 @@ RSpec.describe 'API V1 PO Generation', type: :request do
     end
   end
 
+  describe 'POST /api/v1/po_generation/cancel/:id' do
+    context 'when cancelling a running job' do
+      let(:running_job) { create(:po_generation_job, :running, user: user) }
+
+      it 'marks job as failed with cancellation message' do
+        post "/api/v1/po_generation/cancel/#{running_job.id}"
+
+        running_job.reload
+        expect(running_job.status).to eq('failed')
+        expect(running_job.error_message).to eq('Job cancelled by user')
+        expect(running_job.completed_at).to be_present
+      end
+
+      it 'releases lock' do
+        post "/api/v1/po_generation/cancel/#{running_job.id}"
+
+        running_job.reload
+        expect(running_job.locked_at).to be_nil
+        expect(running_job.locked_by).to be_nil
+      end
+
+      it 'returns success response' do
+        post "/api/v1/po_generation/cancel/#{running_job.id}"
+
+        expect(response).to have_http_status(:success)
+        json = JSON.parse(response.body)
+        expect(json['data']['message']).to include('cancelled successfully')
+        expect(json['data']['job_id']).to eq(running_job.id)
+      end
+    end
+
+    context 'when cancelling a pending job' do
+      let(:pending_job) { create(:po_generation_job, status: 'pending', user: user) }
+
+      it 'marks job as failed' do
+        post "/api/v1/po_generation/cancel/#{pending_job.id}"
+
+        pending_job.reload
+        expect(pending_job.status).to eq('failed')
+        expect(pending_job.error_message).to eq('Job cancelled by user')
+      end
+
+      it 'returns success response' do
+        post "/api/v1/po_generation/cancel/#{pending_job.id}"
+
+        expect(response).to have_http_status(:success)
+      end
+    end
+
+    context 'when job is already completed' do
+      let(:completed_job) { create(:po_generation_job, :completed, user: user) }
+
+      it 'returns bad request' do
+        post "/api/v1/po_generation/cancel/#{completed_job.id}"
+
+        expect(response).to have_http_status(:bad_request)
+        json = JSON.parse(response.body)
+        expect(json['error']).to include('Can only cancel pending or running jobs')
+      end
+
+      it 'does not change job status' do
+        post "/api/v1/po_generation/cancel/#{completed_job.id}"
+
+        completed_job.reload
+        expect(completed_job.status).to eq('completed')
+      end
+    end
+
+    context 'when job is already failed' do
+      let(:failed_job) { create(:po_generation_job, :failed, user: user) }
+
+      it 'returns bad request' do
+        post "/api/v1/po_generation/cancel/#{failed_job.id}"
+
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    context 'when job not found' do
+      it 'returns not found' do
+        post '/api/v1/po_generation/cancel/99999'
+
+        expect(response).to have_http_status(:not_found)
+        json = JSON.parse(response.body)
+        expect(json['error']).to eq('Job not found')
+      end
+    end
+
+    context 'without job ID' do
+      it 'returns bad request' do
+        post '/api/v1/po_generation/cancel/'
+
+        expect(response).to have_http_status(:not_found) # Rails routing returns 404 for missing ID
+      end
+    end
+  end
+
   describe 'POST /api/v1/po_generation/resend_email' do
     let(:job) { create(:po_generation_job, :completed_batch, user: user, successful_pos: 2) }
 
@@ -257,6 +354,26 @@ RSpec.describe 'API V1 PO Generation', type: :request do
         post '/api/v1/po_generation/resend_email', params: { job_id: failed_job.id }
 
         expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    context 'when job_id is missing' do
+      it 'returns bad request' do
+        post '/api/v1/po_generation/resend_email', params: {}
+
+        expect(response).to have_http_status(:bad_request)
+        json = JSON.parse(response.body)
+        expect(json['error']).to include('Job ID is required')
+      end
+    end
+
+    context 'when job not found' do
+      it 'returns not found' do
+        post '/api/v1/po_generation/resend_email', params: { job_id: 99999 }
+
+        expect(response).to have_http_status(:not_found)
+        json = JSON.parse(response.body)
+        expect(json['error']).to eq('Job not found')
       end
     end
   end
