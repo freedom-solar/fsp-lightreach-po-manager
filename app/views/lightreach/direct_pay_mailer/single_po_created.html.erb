@@ -4,6 +4,9 @@
 <p><strong>Project ID:</strong> <%= @po_data[:project_id] %></p>
 <p><strong>PO ID:</strong> <%= @po_data[:po_id] %></p>
 <p><strong>Location:</strong> <%= @po_data[:location_name] %></p>
+<p><strong>Materials Needed By:</strong> <%= @po_data[:job_start].present? ? Time.parse(@po_data[:job_start]).strftime('%B %d, %Y') : 'N/A' %></p>
+<p><strong>Customer Phone:</strong> <%= @po_data[:customer_phone] || 'N/A' %></p>
+<p><strong>Customer Email:</strong> <%= @po_data[:customer_email] || 'N/A' %></p>
 <p><strong>Generated:</strong> <%= @generated_at.strftime('%B %d, %Y at %I:%M %p') %></p>
 
 <p style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 15px 0;"><strong>Note:</strong> Equipment should be shipped to the warehouse for this location, not to the job site.</p>

@@ -36,7 +36,7 @@ class PoGenerationService
   def generate_po_for_project(project_id, skip_email: false, skip_crew_check: false)
     log_progress("Fetching project data for #{project_id}")
 
-    fields = ['name', 'fields.lightreach_direct_pay_po_link', 'fields.loan_application_id',
+    fields = ['name', 'phone', 'email', 'fields.lightreach_direct_pay_po_link', 'fields.loan_application_id',
               'fields.system_size', 'fields.lender']
     result = ProjectSunriseApi.get_projects_bulk([project_id], fields: fields)
     project = result['items']&.first
@@ -124,7 +124,7 @@ class PoGenerationService
   def generate_pos_for_batch(project_ids)
     log_progress("Starting batch PO generation for #{project_ids.length} projects")
 
-    fields = ['name', 'fields.lightreach_direct_pay_po_link', 'fields.loan_application_id',
+    fields = ['name', 'phone', 'email', 'fields.lightreach_direct_pay_po_link', 'fields.loan_application_id',
               'fields.system_size', 'fields.lender']
     result = ProjectSunriseApi.get_projects_bulk(project_ids, fields: fields)
     projects = result['items'] || []
@@ -166,6 +166,8 @@ class PoGenerationService
   def create_po(project, skip_crew_check: false)
     project_id = project['_id']
     project_name = project['name']
+    customer_phone = project['phone']
+    customer_email = project['email']
     lightreach_account_id = project.dig('fields', 'loan_application_id')
     job_start = project['job_start']
     existing_po_link = project.dig('fields', 'lightreach_direct_pay_po_link')
@@ -183,7 +185,7 @@ class PoGenerationService
     # Check if project already has a PO
     if existing_po_link.present?
       log_progress("Project #{project_id} has existing PO link")
-      return use_existing_po(project_id, project_name, lightreach_account_id, job_start, existing_po_link)
+      return use_existing_po(project_id, project_name, lightreach_account_id, job_start, customer_phone, customer_email, existing_po_link)
     end
 
     log_progress("Creating new PO for #{project_id} (direct_pay: #{is_direct_pay})")
@@ -239,6 +241,8 @@ class PoGenerationService
       po_items: po_items,
       lightreach_account_id: lightreach_account_id,
       job_start: job_start,
+      customer_phone: customer_phone,
+      customer_email: customer_email,
       location_id: so_data[:location_id],
       location_name: location_name_for(so_data[:location_id])
     }
@@ -248,7 +252,7 @@ class PoGenerationService
   end
 
   # Use existing PO (verify it exists and hasn't been received)
-  def use_existing_po(project_id, project_name, lightreach_account_id, job_start, po_link)
+  def use_existing_po(project_id, project_name, lightreach_account_id, job_start, customer_phone, customer_email, po_link)
     po_id = extract_po_id_from_link(po_link)
     unless po_id
       log_progress("Could not extract PO ID from link for #{project_id}", level: :error)
@@ -291,6 +295,8 @@ class PoGenerationService
       po_items: po_items,
       lightreach_account_id: lightreach_account_id,
       job_start: job_start,
+      customer_phone: customer_phone,
+      customer_email: customer_email,
       location_id: location_id,
       location_name: location_name_for(location_id),
       existing_po: true
@@ -343,6 +349,8 @@ class PoGenerationService
       'fields.lightreach_direct_pay',
       'fields.lightreach_direct_pay_po_link',
       'name',
+      'phone',
+      'email',
       'fields.loan_application_id',
       'fields.market_region',
       'fields.system_size'
