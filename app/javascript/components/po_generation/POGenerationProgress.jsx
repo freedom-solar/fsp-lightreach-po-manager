@@ -159,14 +159,19 @@ export default function POGenerationProgress({ jobId, onComplete }) {
               </Typography>
             </Box>
 
-            {job.status === 'running' && (
+            {(job.status === 'running' || job.status === 'pending') && (
               <>
-                <LinearProgress
-                  variant="determinate"
-                  value={calculateProgress()}
-                  color={getStatusColor()}
-                  sx={{ mb: 2, height: 8, borderRadius: 1 }}
-                />
+                {job.status === 'running' && (
+                  <LinearProgress
+                    variant="determinate"
+                    value={calculateProgress()}
+                    color={getStatusColor()}
+                    sx={{ mb: 2, height: 8, borderRadius: 1 }}
+                  />
+                )}
+                {job.status === 'pending' && (
+                  <LinearProgress sx={{ mb: 2, height: 8, borderRadius: 1 }} />
+                )}
                 <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
                   <Button
                     variant="outlined"

@@ -1,3 +1,5 @@
+require_relative 'elastic_search_sunrise'
+
 class ProjectSunriseApi
     # Custom exception for API errors with context
     class ApiError < StandardError

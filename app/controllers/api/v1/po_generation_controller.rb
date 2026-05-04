@@ -182,8 +182,8 @@ module Api
 
         job = PoGenerationJob.find(job_id)
 
-        unless job.running?
-          return render_error('Can only cancel running jobs', status: :bad_request)
+        unless job.running? || job.pending?
+          return render_error('Can only cancel pending or running jobs', status: :bad_request)
         end
 
         # Mark job as failed/cancelled
