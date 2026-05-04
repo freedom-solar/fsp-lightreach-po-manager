@@ -35,7 +35,7 @@ gem "mime-types"
 gem "faraday", "~> 0.17"
 gem "faraday_middleware", "0.14.0"
 gem "faraday_middleware-aws-sigv4", "0.5.0"  # For AWS signed requests
-gem "elasticsearch", "~> 7.4"  # For Project Sunrise API
+gem "elasticsearch", "~> 9.3"  # For Project Sunrise API
 
 # Google APIs for service account email sending
 gem "google-apis-gmail_v1", "~> 0.1"
