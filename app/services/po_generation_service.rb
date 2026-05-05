@@ -413,9 +413,14 @@ class PoGenerationService
       item_id = item.dig("item", "id")
       next unless item_id
 
-      # Use raise_on_not_found: false to skip retries and return nil for non-inventory items
-      inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
-      next unless inventory_item.is_a?(Hash)
+      # Fetch inventory item, skipping non-inventory items (serviceitem, etc.)
+      begin
+        inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
+        next unless inventory_item.is_a?(Hash)
+      rescue StandardError
+        # Skip non-inventory items (serviceitem, etc.) that can't be fetched as inventoryitem
+        next
+      end
 
       category = inventory_item.dig("custitem1", "id")&.to_i
       quantity = item["quantity"].to_i
@@ -517,9 +522,14 @@ class PoGenerationService
       item_id = item.dig("item", "id")
       next unless item_id
 
-      # Use raise_on_not_found: false to skip retries and return nil for non-inventory items
-      inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
-      next unless inventory_item.is_a?(Hash)
+      # Fetch inventory item, skipping non-inventory items (serviceitem, etc.)
+      begin
+        inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
+        next unless inventory_item.is_a?(Hash)
+      rescue StandardError
+        # Skip non-inventory items (serviceitem, etc.) that can't be fetched as inventoryitem
+        next
+      end
 
       category = inventory_item.dig("custitem1", "id")&.to_i
       next unless eligible_categories.include?(category)
@@ -560,9 +570,14 @@ class PoGenerationService
       item_id = item.dig("item", "id")
       next false unless item_id
 
-      # Use raise_on_not_found: false to skip retries and return nil for non-inventory items
-      inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
-      next false unless inventory_item.is_a?(Hash)
+      # Fetch inventory item, skipping non-inventory items (serviceitem, etc.)
+      begin
+        inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
+        next false unless inventory_item.is_a?(Hash)
+      rescue StandardError
+        # Skip non-inventory items (serviceitem, etc.) that can't be fetched as inventoryitem
+        next false
+      end
 
       part_number = inventory_item["itemId"] || inventory_item["name"]
       part_number == "PSR-M168-US (DOMESTIC)"
