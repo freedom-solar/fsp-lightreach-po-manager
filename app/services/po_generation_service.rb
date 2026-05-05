@@ -36,8 +36,9 @@ class PoGenerationService
   def generate_po_for_project(project_id, skip_email: false, skip_crew_check: false)
     log_progress("Fetching project data for #{project_id}")
 
-    fields = [ "name", "phone", "email", "fields.lightreach_direct_pay_po_link", "fields.loan_application_id",
-              "fields.system_size", "fields.lender" ]
+    fields = [ "name", "primary_customer_id", "customers", "customers.fields",
+               "fields.lightreach_direct_pay_po_link", "fields.loan_application_id",
+               "fields.system_size", "fields.lender" ]
     result = ProjectSunriseApi.get_projects_bulk([ project_id ], fields: fields)
     project = result["items"]&.first
 
@@ -45,6 +46,11 @@ class PoGenerationService
       log_progress("Could not find project #{project_id}", level: :error)
       return nil
     end
+
+    # Extract phone and email from primary customer
+    customer_data = extract_primary_customer_data(project)
+    project["phone"] = customer_data[:phone]
+    project["email"] = customer_data[:email]
 
     # Fetch job start dates
     log_progress("Fetching job start dates for #{project_id}")
@@ -124,14 +130,22 @@ class PoGenerationService
   def generate_pos_for_batch(project_ids)
     log_progress("Starting batch PO generation for #{project_ids.length} projects")
 
-    fields = [ "name", "phone", "email", "fields.lightreach_direct_pay_po_link", "fields.loan_application_id",
-              "fields.system_size", "fields.lender" ]
+    fields = [ "name", "primary_customer_id", "customers", "customers.fields",
+               "fields.lightreach_direct_pay_po_link", "fields.loan_application_id",
+               "fields.system_size", "fields.lender" ]
     result = ProjectSunriseApi.get_projects_bulk(project_ids, fields: fields)
     projects = result["items"] || []
 
     if projects.empty?
       log_progress("No projects found for provided IDs", level: :error)
       return []
+    end
+
+    # Extract phone and email from primary customer for each project
+    projects.each do |project|
+      customer_data = extract_primary_customer_data(project)
+      project["phone"] = customer_data[:phone]
+      project["email"] = customer_data[:email]
     end
 
     log_progress("Fetching job start dates for #{projects.length} projects")
@@ -349,8 +363,9 @@ class PoGenerationService
       "fields.lightreach_direct_pay",
       "fields.lightreach_direct_pay_po_link",
       "name",
-      "phone",
-      "email",
+      "primary_customer_id",
+      "customers",
+      "customers.fields",
       "fields.loan_application_id",
       "fields.market_region",
       "fields.system_size"
@@ -373,9 +388,12 @@ class PoGenerationService
       crew_complete_ids.include?(p["_id"])
     end
 
-    # Add job start date to each project
+    # Add job start date and customer contact info to each project
     filtered.each do |project|
       project["job_start"] = job_start_by_project[project["_id"]]
+      customer_data = extract_primary_customer_data(project)
+      project["phone"] = customer_data[:phone]
+      project["email"] = customer_data[:email]
     end
 
     filtered
@@ -383,6 +401,27 @@ class PoGenerationService
 
   def direct_pay?(project)
     project.dig("fields", "lender") == "Lightreach Lease"
+  end
+
+  # Extract phone and email from primary customer
+  def extract_primary_customer_data(project)
+    primary_customer_id = project["primary_customer_id"]
+    customers = project["customers"] || []
+
+    # Find the primary customer in the customers array
+    primary_customer = if primary_customer_id
+                         customers.find { |c| c["_id"] == primary_customer_id }
+    else
+                         customers.first
+    end
+
+    return { phone: nil, email: nil } unless primary_customer
+
+    customer_fields = primary_customer["fields"] || {}
+    {
+      phone: customer_fields["phone"],
+      email: customer_fields["email"]
+    }
   end
 
   def crew_installation_complete?(project_id)
