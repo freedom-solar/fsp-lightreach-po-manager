@@ -469,9 +469,14 @@ class AddRackingQuantitiesToSoWorker
       next unless item_id
       next if cache.key?(item_id) # Skip if already cached (even if value is nil)
 
-      # Use raise_on_not_found: false to skip retries and return nil for non-inventory items
-      inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
-      cache[item_id] = inventory_item
+      begin
+        # Try to fetch as inventory item - will fail for service items, etc.
+        inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
+        cache[item_id] = inventory_item
+      rescue StandardError => e
+        # Skip non-inventory items (service items, etc.) - just cache as nil
+        cache[item_id] = nil
+      end
     end
 
     log_progress("Cached #{cache.size} inventory items")
