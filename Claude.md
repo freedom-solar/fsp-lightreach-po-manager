@@ -2,6 +2,31 @@
 
 This document outlines the development standards and requirements for the FSP Lightreach PO Manager project.
 
+## ⚠️ IMPORTANT: Deployment Workflow
+
+**NEVER push directly to main/master or deploy directly to Heroku.**
+
+Always follow this workflow:
+1. Create a feature branch for your changes
+2. Make commits on the feature branch
+3. Create a Pull Request for review
+4. Wait for CI checks to pass and PR approval
+5. Merge the PR (deployment happens automatically)
+
+```bash
+# CORRECT workflow
+git checkout -b feature/my-feature
+# make changes...
+git add <files>
+git commit -m "My changes"
+git push origin feature/my-feature
+# Then create PR via GitHub
+
+# WRONG - Never do this!
+git push origin main          # ❌ Don't push directly to main
+git push heroku main          # ❌ Don't deploy directly to Heroku
+```
+
 ## Pre-PR Checklist
 
 Before creating a Pull Request, ensure the following requirements are met:
