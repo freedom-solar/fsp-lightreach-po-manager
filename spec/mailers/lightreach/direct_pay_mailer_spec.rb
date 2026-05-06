@@ -186,8 +186,9 @@ RSpec.describe Lightreach::DirectPayMailer, type: :mailer do
         )
       end
 
-      it 'includes Orlando-specific contact' do
+      it 'includes Orlando-specific contacts' do
         expect(mail.to).to include('David.Principato@greentechrenewables.com')
+        expect(mail.to).to include('jordan.swanson@greentechrenewables.com')
       end
     end
 

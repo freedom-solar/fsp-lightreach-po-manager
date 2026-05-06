@@ -76,6 +76,7 @@ class Lightreach::DirectPayMailer < ApplicationMailer
       recipients << "troy.walter@greentechrenewables.com"
     elsif region == "Orlando"
       recipients << "David.Principato@greentechrenewables.com"
+      recipients << "jordan.swanson@greentechrenewables.com"
     elsif TEXAS_LOCATIONS.include?(region)
       recipients << "Sydni.landreneau@greentechrenewables.com"
       recipients << "alex.juarez@greentechrenewables.com"
