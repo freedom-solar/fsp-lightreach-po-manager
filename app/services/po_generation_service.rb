@@ -766,7 +766,8 @@ class PoGenerationService
       files: [
         {
           "file" => temp_file,
-          "filename" => filename
+          "name" => filename,
+          "content_type" => "application/pdf"
         }
       ]
     }
