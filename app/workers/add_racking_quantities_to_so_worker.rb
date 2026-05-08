@@ -23,6 +23,10 @@ class AddRackingQuantitiesToSoWorker
   TESLA_200A_CT_ITEM_ID = "953"
   # NetSuite item ID for SUNMODO TOPTILE-7-B
   SUNMODO_TOPTILE_7_B_ITEM_ID = "954"
+  # NetSuite item ID for SPAN 1-00800-XX
+  SPAN_1_00800_XX_ITEM_ID = "735"
+  # NetSuite item ID for PL7R-40MID200-FG
+  PL7R_40MID200_FG_ITEM_ID = "855"
 
   # BOM items to parse and add to SO (standard flow)
   BOM_ITEM_CONFIGS = [
@@ -32,7 +36,9 @@ class AddRackingQuantitiesToSoWorker
     { search_string: "PIF2-BDT", item_id: PIF2_BDT_ITEM_ID, item_name: "PIF2-BDT" },
     { search_string: "2033376-", item_id: TESLA_200A_CT_ITEM_ID, item_name: "Tesla 200A CT" },
     { search_string: "K10461-107-BK", item_id: SUNMODO_TOPTILE_7_B_ITEM_ID, item_name: "SUNMODO TOPTILE-7-B" },
-    { search_string: "PF-SF70", item_id: PF_SF70_ITEM_ID, item_name: "PF-SF70" }
+    { search_string: "PF-SF70", item_id: PF_SF70_ITEM_ID, item_name: "PF-SF70" },
+    { search_string: "SPAN 1-00800-XX", item_id: SPAN_1_00800_XX_ITEM_ID, item_name: "SPAN 1-00800-XX" },
+    { search_string: "PL7R-40MID200-FG", item_id: PL7R_40MID200_FG_ITEM_ID, item_name: "PL7R-40MID200-FG" }
   ].freeze
 
   def perform(project_id, job_id: nil, skip_status_check: false)
