@@ -27,6 +27,8 @@ class AddRackingQuantitiesToSoWorker
   SPAN_1_00800_XX_ITEM_ID = "735"
   # NetSuite item ID for PL7R-40MID200-FG
   PL7R_40MID200_FG_ITEM_ID = "855"
+  # NetSuite item ID for Tesla Remote Energy Meter
+  TESLA_METER_ITEM_ID = "787"
 
   # BOM items to parse and add to SO (standard flow)
   BOM_ITEM_CONFIGS = [
@@ -38,7 +40,8 @@ class AddRackingQuantitiesToSoWorker
     { search_string: "K10461-107-BK", item_id: SUNMODO_TOPTILE_7_B_ITEM_ID, item_name: "SUNMODO TOPTILE-7-B" },
     { search_string: "PF-SF70", item_id: PF_SF70_ITEM_ID, item_name: "PF-SF70" },
     { search_string: "SPAN 1-00800-XX", item_id: SPAN_1_00800_XX_ITEM_ID, item_name: "SPAN 1-00800-XX" },
-    { search_string: "PL7R-40MID200-FG", item_id: PL7R_40MID200_FG_ITEM_ID, item_name: "PL7R-40MID200-FG" }
+    { search_string: "PL7R-40MID200-FG", item_id: PL7R_40MID200_FG_ITEM_ID, item_name: "PL7R-40MID200-FG" },
+    { search_string: "2002069-", item_id: TESLA_METER_ITEM_ID, item_name: "Tesla Meter" }
   ].freeze
 
   def perform(project_id, job_id: nil, skip_status_check: false)
@@ -51,10 +54,6 @@ class AddRackingQuantitiesToSoWorker
 
     # Extract Pegasus racking items from BOM
     racking_items = parse_racking_items_from_bom(bom_data["file"])
-    return log_error(project_id, "No Pegasus racking items found in BOM") if racking_items.empty?
-
-    log_progress("Found #{racking_items.size} Pegasus racking items in BOM")
-    racking_items.each { |item| log_progress("  #{item[:part_number]}: #{item[:quantity]} EA") }
 
     # Get NetSuite Sales Order ID from HubSpot Deal
     sales_order_id = fetch_sales_order_id(project_id)
@@ -69,8 +68,14 @@ class AddRackingQuantitiesToSoWorker
     # NOTE: We check individual line item fulfillment (quantityFulfilled) instead of SO-level status
     # This allows updating unfulfilled items even when other parts of the SO have been fulfilled
 
-    # Update racking quantities on Sales Order (skips fulfilled items)
-    update_racking_quantities(project_id, sales_order_id, sales_order, racking_items)
+    # Update racking quantities on Sales Order (skips fulfilled items) - only if racking items found
+    if racking_items.any?
+      log_progress("Found #{racking_items.size} Pegasus racking items in BOM")
+      racking_items.each { |item| log_progress("  #{item[:part_number]}: #{item[:quantity]} EA") }
+      update_racking_quantities(project_id, sales_order_id, sales_order, racking_items)
+    else
+      log_progress("No Pegasus racking items found in BOM (battery-only job?)", level: :warning)
+    end
 
     # Parse and add Enphase Envoy items (special case: adds 2 items)
     envoy_items = parse_items_from_bom(bom_data["file"], search_string: "ENV-IQ-AM1-240",

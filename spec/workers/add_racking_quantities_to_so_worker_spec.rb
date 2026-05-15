@@ -50,10 +50,18 @@ RSpec.describe AddRackingQuantitiesToSoWorker, type: :worker do
     context 'when no Pegasus racking items found in BOM' do
       before do
         allow(worker).to receive(:parse_racking_items_from_bom).and_return([])
+        allow(worker).to receive(:log_progress).and_call_original
       end
 
-      it 'logs error and returns nil' do
-        expect(worker).to receive(:log_error).with(project_id, 'No Pegasus racking items found in BOM')
+      it 'logs warning and continues processing other BOM items' do
+        # Should log warning about no racking (not error/return early)
+        expect(worker).to receive(:log_progress).with(
+          "No Pegasus racking items found in BOM (battery-only job?)", level: :warning
+        )
+        # Should continue to completion (not return early)
+        expect(worker).to receive(:log_progress).with(
+          "Successfully updated racking quantities for project #{project_id}", level: :success
+        )
         worker.perform(project_id)
       end
     end
