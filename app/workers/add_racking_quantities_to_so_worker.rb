@@ -27,6 +27,36 @@ class AddRackingQuantitiesToSoWorker
   SPAN_1_00800_XX_ITEM_ID = "735"
   # NetSuite item ID for PL7R-40MID200-FG
   PL7R_40MID200_FG_ITEM_ID = "855"
+  # NetSuite item ID for Tesla Remote Energy Meter
+  TESLA_METER_ITEM_ID = "787"
+  # NetSuite item ID for APKE00084
+  APKE00084_ITEM_ID = "957"
+  # NetSuite item ID for APKE00086
+  APKE00086_ITEM_ID = "958"
+  # NetSuite item ID for APKE00088
+  APKE00088_ITEM_ID = "959"
+  # NetSuite item ID for APKE00090
+  APKE00090_ITEM_ID = "960"
+  # NetSuite item ID for APKE00091
+  APKE00091_ITEM_ID = "961"
+  # NetSuite item ID for APKE00092
+  APKE00092_ITEM_ID = "962"
+  # NetSuite item ID for APKE00094
+  APKE00094_ITEM_ID = "963"
+  # NetSuite item ID for APKE00096
+  APKE00096_ITEM_ID = "964"
+  # NetSuite item ID for APKE00098
+  APKE00098_ITEM_ID = "965"
+  # NetSuite item ID for APKE00100
+  APKE00100_ITEM_ID = "966"
+  # NetSuite item ID for APKE00102
+  APKE00102_ITEM_ID = "967"
+  # NetSuite item ID for APKE00105
+  APKE00105_ITEM_ID = "968"
+  # NetSuite item ID for APKE00110
+  APKE00110_ITEM_ID = "969"
+  # NetSuite item ID for APKE00115
+  APKE00115_ITEM_ID = "970"
 
   # BOM items to parse and add to SO (standard flow)
   BOM_ITEM_CONFIGS = [
@@ -38,7 +68,22 @@ class AddRackingQuantitiesToSoWorker
     { search_string: "K10461-107-BK", item_id: SUNMODO_TOPTILE_7_B_ITEM_ID, item_name: "SUNMODO TOPTILE-7-B" },
     { search_string: "PF-SF70", item_id: PF_SF70_ITEM_ID, item_name: "PF-SF70" },
     { search_string: "SPAN 1-00800-XX", item_id: SPAN_1_00800_XX_ITEM_ID, item_name: "SPAN 1-00800-XX" },
-    { search_string: "PL7R-40MID200-FG", item_id: PL7R_40MID200_FG_ITEM_ID, item_name: "PL7R-40MID200-FG" }
+    { search_string: "PL7R-40MID200-FG", item_id: PL7R_40MID200_FG_ITEM_ID, item_name: "PL7R-40MID200-FG" },
+    { search_string: "2002069-", item_id: TESLA_METER_ITEM_ID, item_name: "Tesla Meter" },
+    { search_string: "APKE00084", item_id: APKE00084_ITEM_ID, item_name: "APKE00084" },
+    { search_string: "APKE00086", item_id: APKE00086_ITEM_ID, item_name: "APKE00086" },
+    { search_string: "APKE00088", item_id: APKE00088_ITEM_ID, item_name: "APKE00088" },
+    { search_string: "APKE00090", item_id: APKE00090_ITEM_ID, item_name: "APKE00090" },
+    { search_string: "APKE00091", item_id: APKE00091_ITEM_ID, item_name: "APKE00091" },
+    { search_string: "APKE00092", item_id: APKE00092_ITEM_ID, item_name: "APKE00092" },
+    { search_string: "APKE00094", item_id: APKE00094_ITEM_ID, item_name: "APKE00094" },
+    { search_string: "APKE00096", item_id: APKE00096_ITEM_ID, item_name: "APKE00096" },
+    { search_string: "APKE00098", item_id: APKE00098_ITEM_ID, item_name: "APKE00098" },
+    { search_string: "APKE00100", item_id: APKE00100_ITEM_ID, item_name: "APKE00100" },
+    { search_string: "APKE00102", item_id: APKE00102_ITEM_ID, item_name: "APKE00102" },
+    { search_string: "APKE00105", item_id: APKE00105_ITEM_ID, item_name: "APKE00105" },
+    { search_string: "APKE00110", item_id: APKE00110_ITEM_ID, item_name: "APKE00110" },
+    { search_string: "APKE00115", item_id: APKE00115_ITEM_ID, item_name: "APKE00115" }
   ].freeze
 
   def perform(project_id, job_id: nil, skip_status_check: false)
