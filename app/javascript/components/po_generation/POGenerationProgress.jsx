@@ -38,9 +38,8 @@ export default function POGenerationProgress({ jobId, onComplete }) {
               completed_at: data.completed_at,
             }));
 
-            if (data.status === 'completed' || data.status === 'failed') {
-              onComplete?.();
-            }
+            // Don't auto-redirect when job completes/fails
+          // Let user review logs and click "Back to Dashboard" manually
           } else {
             // Log message
             setLogs((prev) => [...prev, data]);
@@ -208,7 +207,7 @@ export default function POGenerationProgress({ jobId, onComplete }) {
 
         <LogViewer logs={logs} />
 
-        {job?.status === 'completed' && (
+        {(job?.status === 'completed' || job?.status === 'failed') && (
           <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
             <Button variant="outlined" onClick={onComplete}>
               Back to Dashboard

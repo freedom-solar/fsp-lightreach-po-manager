@@ -96,10 +96,6 @@ class AddRackingQuantitiesToSoWorker
 
     # Extract Pegasus racking items from BOM
     racking_items = parse_racking_items_from_bom(bom_data["file"])
-    return log_error(project_id, "No Pegasus racking items found in BOM") if racking_items.empty?
-
-    log_progress("Found #{racking_items.size} Pegasus racking items in BOM")
-    racking_items.each { |item| log_progress("  #{item[:part_number]}: #{item[:quantity]} EA") }
 
     # Get NetSuite Sales Order ID from HubSpot Deal
     sales_order_id = fetch_sales_order_id(project_id)
@@ -114,8 +110,14 @@ class AddRackingQuantitiesToSoWorker
     # NOTE: We check individual line item fulfillment (quantityFulfilled) instead of SO-level status
     # This allows updating unfulfilled items even when other parts of the SO have been fulfilled
 
-    # Update racking quantities on Sales Order (skips fulfilled items)
-    update_racking_quantities(project_id, sales_order_id, sales_order, racking_items)
+    # Update racking quantities on Sales Order (skips fulfilled items) - only if racking items found
+    if racking_items.any?
+      log_progress("Found #{racking_items.size} Pegasus racking items in BOM")
+      racking_items.each { |item| log_progress("  #{item[:part_number]}: #{item[:quantity]} EA") }
+      update_racking_quantities(project_id, sales_order_id, sales_order, racking_items)
+    else
+      log_progress("No Pegasus racking items found in BOM (battery-only job?)", level: :warning)
+    end
 
     # Parse and add Enphase Envoy items (special case: adds 2 items)
     envoy_items = parse_items_from_bom(bom_data["file"], search_string: "ENV-IQ-AM1-240",
