@@ -3,12 +3,14 @@ class Lightreach::DirectPayMailer < ApplicationMailer
 
   FLORIDA_LOCATIONS = %w[Tampa Orlando].freeze
   TEXAS_LOCATIONS = [ "Austin", "Houston", "Dallas", "San Antonio" ].freeze
+  SAFE_HARBOR_PW3_ITEM_ID = "971"
 
   def regional_pos_created(region:, created_pos:, po_pdfs:, summary_pdf:, test_mode: false)
     @region = region
     @created_pos = created_pos
     @total_projects = created_pos.length
     @generated_at = Time.now
+    @has_safe_harbor_pw3 = contains_safe_harbor_item?(created_pos)
 
     # Attach region summary PDF
     filename = "Lightreach_Direct_Pay_#{region.gsub(' ', '_')}_Summary.pdf"
@@ -25,7 +27,7 @@ class Lightreach::DirectPayMailer < ApplicationMailer
       }
     end
 
-    recipients = test_mode ? [ "dkimbriel@gofreedompower.com" ] : build_regional_recipient_list(region)
+    recipients = test_mode ? [ "dkimbriel@gofreedompower.com" ] : build_regional_recipient_list(region, include_purchasing: @has_safe_harbor_pw3)
     subject_line = "Lightreach Direct Pay - #{region} - #{@total_projects} Purchase Orders Created"
     subject_line = "[TEST] #{subject_line}" if test_mode
 
@@ -38,6 +40,7 @@ class Lightreach::DirectPayMailer < ApplicationMailer
   def single_po_created(po_data:, pdf_binary:, cc_email: nil)
     @po_data = po_data
     @generated_at = Time.now
+    @has_safe_harbor_pw3 = contains_safe_harbor_item?([ po_data ])
     region = po_data[:location_name]
 
     attachments["PO_#{po_data[:po_id]}_#{po_data[:project_id]}.pdf"] = {
@@ -45,7 +48,7 @@ class Lightreach::DirectPayMailer < ApplicationMailer
       content: pdf_binary
     }
 
-    recipients = build_regional_recipient_list(region)
+    recipients = build_regional_recipient_list(region, include_purchasing: @has_safe_harbor_pw3)
     mail_options = {
       to: recipients,
       subject: "Lightreach Direct Pay PO Created - Project #{po_data[:project_id]}"
@@ -57,7 +60,7 @@ class Lightreach::DirectPayMailer < ApplicationMailer
 
   private
 
-  def build_regional_recipient_list(region)
+  def build_regional_recipient_list(region, include_purchasing: false)
     recipients = [
       "dkimbriel@gofreedompower.com",
       "colby.clem@greentechrenewables.com",
@@ -82,6 +85,15 @@ class Lightreach::DirectPayMailer < ApplicationMailer
       recipients << "alex.juarez@greentechrenewables.com"
     end
 
+    # Add purchasing team if Safe Harbor PW3 item is present
+    recipients << "purchasing@gofreedompower.com" if include_purchasing
+
     recipients
+  end
+
+  def contains_safe_harbor_item?(pos_data)
+    pos_data.any? do |po|
+      po[:po_items]&.any? { |item| item[:item_id].to_s == SAFE_HARBOR_PW3_ITEM_ID }
+    end
   end
 end
