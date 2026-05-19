@@ -6,6 +6,10 @@
 
 <p style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 15px 0;"><strong>Note:</strong> Equipment should be shipped to the warehouse for each location, not to the job site.</p>
 
+<% if @has_safe_harbor_pw3 %>
+<p style="background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 10px; margin: 15px 0;"><strong>⚠️ Action Required - Safe Harbor PW3:</strong> One or more POs in this batch contain a Safe Harbor PW3 item. Purchasing team: Please purchase the Safe Harbor PW3 through the CED portal.</p>
+<% end %>
+
 <hr>
 
 <h3>Purchase Order Details</h3>
