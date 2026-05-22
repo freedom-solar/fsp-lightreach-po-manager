@@ -60,9 +60,15 @@ module Netsuite
                 sleep(sleep_time)
             end
 
-            puts "Response: #{response.body}"
-            JSON.parse(response.body) if return_method == :body
-            response["Location"].split("/")[-1] if return_method == :id
+            unless response.is_a?(Net::HTTPSuccess)
+                raise_netsuite_error(response, method: "POST", path: path, params: params, body: body)
+            end
+
+            if return_method == :body
+                JSON.parse(response.body)
+            elsif return_method == :id
+                response["Location"]&.split("/")&.last
+            end
         end
 
         def patch(path:, body: {}, params: {})
