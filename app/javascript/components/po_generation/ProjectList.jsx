@@ -53,37 +53,28 @@ function ProjectActionButton({ project, onGenerateSingle, onReturnMaterial }) {
     handleClose();
   };
 
-  // For projects that already have a PO, show split button with "Send PO to CED" and "Return Material"
+  // For projects that already have a PO, show two separate buttons
   if (project.has_po) {
     return (
-      <>
-        <ButtonGroup variant="outlined" size="small">
-          <Button
-            startIcon={<PlayArrowIcon />}
-            onClick={() => onGenerateSingle(project.id, { skipEmail: false })}
-          >
-            Send PO to CED
-          </Button>
-          <Button
-            size="small"
-            onClick={handleClick}
-          >
-            <ArrowDropDownIcon />
-          </Button>
-        </ButtonGroup>
-        <Menu
-          anchorEl={anchorEl}
-          open={open}
-          onClose={handleClose}
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<PlayArrowIcon />}
+          onClick={() => onGenerateSingle(project.id, { skipEmail: false })}
         >
-          <MenuItem onClick={handleReturnMaterial}>
-            <ListItemIcon>
-              <AssignmentReturnIcon fontSize="small" color="warning" />
-            </ListItemIcon>
-            <ListItemText>Return Material</ListItemText>
-          </MenuItem>
-        </Menu>
-      </>
+          Send PO to CED
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          color="warning"
+          startIcon={<AssignmentReturnIcon />}
+          onClick={() => onReturnMaterial(project)}
+        >
+          Return Material
+        </Button>
+      </Box>
     );
   }
 
