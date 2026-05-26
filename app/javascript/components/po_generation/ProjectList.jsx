@@ -24,8 +24,9 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import EmailIcon from '@mui/icons-material/Email';
 import DescriptionIcon from '@mui/icons-material/Description';
+import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn';
 
-function ProjectActionButton({ project, onGenerateSingle }) {
+function ProjectActionButton({ project, onGenerateSingle, onReturnMaterial }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
 
@@ -47,17 +48,42 @@ function ProjectActionButton({ project, onGenerateSingle }) {
     handleClose();
   };
 
-  // For projects that already have a PO, just show "Send PO to CED" button
+  const handleReturnMaterial = () => {
+    onReturnMaterial(project);
+    handleClose();
+  };
+
+  // For projects that already have a PO, show split button with "Send PO to CED" and "Return Material"
   if (project.has_po) {
     return (
-      <Button
-        size="small"
-        variant="outlined"
-        startIcon={<PlayArrowIcon />}
-        onClick={() => onGenerateSingle(project.id, { skipEmail: false })}
-      >
-        Send PO to CED
-      </Button>
+      <>
+        <ButtonGroup variant="outlined" size="small">
+          <Button
+            startIcon={<PlayArrowIcon />}
+            onClick={() => onGenerateSingle(project.id, { skipEmail: false })}
+          >
+            Send PO to CED
+          </Button>
+          <Button
+            size="small"
+            onClick={handleClick}
+          >
+            <ArrowDropDownIcon />
+          </Button>
+        </ButtonGroup>
+        <Menu
+          anchorEl={anchorEl}
+          open={open}
+          onClose={handleClose}
+        >
+          <MenuItem onClick={handleReturnMaterial}>
+            <ListItemIcon>
+              <AssignmentReturnIcon fontSize="small" color="warning" />
+            </ListItemIcon>
+            <ListItemText>Return Material</ListItemText>
+          </MenuItem>
+        </Menu>
+      </>
     );
   }
 
@@ -100,7 +126,7 @@ function ProjectActionButton({ project, onGenerateSingle }) {
   );
 }
 
-export default function ProjectList({ projects, onGenerateSingle, selectedProjects, onToggleProject, onToggleAll }) {
+export default function ProjectList({ projects, onGenerateSingle, selectedProjects, onToggleProject, onToggleAll, onReturnMaterial }) {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString();
@@ -206,6 +232,7 @@ export default function ProjectList({ projects, onGenerateSingle, selectedProjec
                 <ProjectActionButton
                   project={project}
                   onGenerateSingle={onGenerateSingle}
+                  onReturnMaterial={onReturnMaterial}
                 />
               </TableCell>
             </TableRow>

@@ -312,4 +312,131 @@ RSpec.describe Lightreach::DirectPayMailer, type: :mailer do
       end
     end
   end
+
+  describe '#material_return_requested' do
+    let(:project_data) do
+      {
+        project_id: 'SF-001',
+        project_name: 'Test Project',
+        po_id: 12345,
+        po_link: 'https://system.netsuite.com/app/accounting/transactions/purchord.nl?id=12345',
+        region: 'Austin',
+        system_size: 10.5,
+        po_items: [
+          { description: 'Solar Panel', quantity: 20 },
+          { description: 'Inverter', quantity: 1 }
+        ]
+      }
+    end
+
+    let(:return_message) { 'Customer cancelled installation' }
+    let(:requester_email) { 'user@gofreedompower.com' }
+
+    before do
+      allow(DistributionList).to receive(:warehouse).and_return([ 'warehouse@example.com' ])
+      allow(DistributionList).to receive(:regional_rom).and_return([ 'rom@example.com' ])
+    end
+
+    let(:mail) do
+      described_class.material_return_requested(
+        project_data: project_data,
+        return_message: return_message,
+        requester_email: requester_email
+      )
+    end
+
+    it 'renders the subject' do
+      expect(mail.subject).to eq('MATERIAL RETURN REQUEST - Project SF-001')
+    end
+
+    it 'sends to regional recipients' do
+      expect(mail.to).to include('dkimbriel@gofreedompower.com')
+      expect(mail.to).to include('colby.clem@greentechrenewables.com')
+      expect(mail.to).to include('warehouse@example.com')
+    end
+
+    it 'CCs the requester' do
+      expect(mail.cc).to eq([ requester_email ])
+    end
+
+    it 'sends from correct address' do
+      expect(mail.from).to eq([ 'project_sunrise@gofreedompower.com' ])
+    end
+
+    it 'includes return message in body' do
+      expect(mail.body.encoded).to include('Customer cancelled installation')
+    end
+
+    it 'includes project details in body' do
+      expect(mail.body.encoded).to include('SF-001')
+      expect(mail.body.encoded).to include('Test Project')
+      expect(mail.body.encoded).to include('Austin')
+    end
+
+    it 'includes PO items in body' do
+      expect(mail.body.encoded).to include('Solar Panel')
+      expect(mail.body.encoded).to include('Inverter')
+    end
+
+    it 'includes action required warning' do
+      expect(mail.body.encoded).to include('Action Required')
+      expect(mail.body.encoded).to include('Material Return Request')
+    end
+
+    context 'for Tampa region' do
+      let(:project_data) do
+        {
+          project_id: 'SF-001',
+          project_name: 'Tampa Project',
+          po_id: 12345,
+          po_link: 'https://netsuite.com?id=12345',
+          region: 'Tampa',
+          system_size: 8.0,
+          po_items: []
+        }
+      end
+
+      it 'includes Tampa-specific contacts' do
+        expect(mail.to).to include('hunter.david@greentechrenewables.com')
+        expect(mail.to).to include('troy.walter@greentechrenewables.com')
+      end
+    end
+
+    context 'for Orlando region' do
+      let(:project_data) do
+        {
+          project_id: 'SF-001',
+          project_name: 'Orlando Project',
+          po_id: 12345,
+          po_link: 'https://netsuite.com?id=12345',
+          region: 'Orlando',
+          system_size: 8.0,
+          po_items: []
+        }
+      end
+
+      it 'includes Orlando-specific contacts' do
+        expect(mail.to).to include('David.Principato@greentechrenewables.com')
+        expect(mail.to).to include('jordan.swanson@greentechrenewables.com')
+      end
+    end
+
+    context 'when po_items is empty' do
+      let(:project_data) do
+        {
+          project_id: 'SF-001',
+          project_name: 'Test Project',
+          po_id: 12345,
+          po_link: 'https://netsuite.com?id=12345',
+          region: 'Austin',
+          system_size: 10.5,
+          po_items: []
+        }
+      end
+
+      it 'does not render PO items table' do
+        expect(mail.body.encoded).not_to include('<th>Description</th>')
+      end
+    end
+  end
 end
