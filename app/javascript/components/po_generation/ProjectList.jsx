@@ -56,7 +56,7 @@ function ProjectActionButton({ project, onGenerateSingle, onReturnMaterial }) {
   // For projects that already have a PO, show two separate buttons
   if (project.has_po) {
     return (
-      <Box sx={{ display: 'flex', gap: 1 }}>
+      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
         <Button
           size="small"
           variant="outlined"
