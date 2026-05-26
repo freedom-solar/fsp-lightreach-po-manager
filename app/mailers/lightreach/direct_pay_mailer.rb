@@ -58,6 +58,22 @@ class Lightreach::DirectPayMailer < ApplicationMailer
     mail(mail_options)
   end
 
+  def material_return_requested(project_data:, return_message:, requester_email:)
+    @project_data = project_data
+    @return_message = return_message
+    @requester_email = requester_email
+    @requested_at = Time.now
+
+    region = project_data[:region]
+    recipients = build_regional_recipient_list(region, include_purchasing: false)
+
+    mail(
+      to: recipients,
+      cc: requester_email,
+      subject: "MATERIAL RETURN REQUEST - Project #{project_data[:project_id]}"
+    )
+  end
+
   private
 
   def build_regional_recipient_list(region, include_purchasing: false)

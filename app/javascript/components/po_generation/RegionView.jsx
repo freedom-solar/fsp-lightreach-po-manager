@@ -6,11 +6,14 @@ import {
   Alert,
   Typography,
   Paper,
+  Snackbar,
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ProjectList from './ProjectList';
 import POGenerationProgress from './POGenerationProgress';
 import ManualProjectInput from './ManualProjectInput';
+import ReturnMaterialDialog from './ReturnMaterialDialog';
+import ManualReturnMaterialInput from './ManualReturnMaterialInput';
 
 export default function RegionView({ region }) {
   const [projects, setProjects] = useState([]);
@@ -18,6 +21,9 @@ export default function RegionView({ region }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeJobId, setActiveJobId] = useState(null);
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [returnProject, setReturnProject] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   useEffect(() => {
     fetchProjects();
@@ -127,6 +133,15 @@ export default function RegionView({ region }) {
     fetchProjects(); // Refresh project list
   };
 
+  const handleReturnMaterial = (project) => {
+    setReturnProject(project);
+    setReturnDialogOpen(true);
+  };
+
+  const handleReturnSuccess = () => {
+    setSuccessMessage('Material return request sent successfully');
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -171,13 +186,32 @@ export default function RegionView({ region }) {
             onToggleProject={handleToggleProject}
             onToggleAll={handleToggleAll}
             onGenerateSingle={handleGenerateSingle}
+            onReturnMaterial={handleReturnMaterial}
           />
 
           <Paper sx={{ mt: 3, p: 3 }}>
             <ManualProjectInput onGenerate={handleGenerateSingle} />
           </Paper>
+
+          <Paper sx={{ mt: 3, p: 3 }}>
+            <ManualReturnMaterialInput onReturnMaterial={handleReturnMaterial} />
+          </Paper>
         </>
       )}
+
+      <ReturnMaterialDialog
+        open={returnDialogOpen}
+        onClose={() => setReturnDialogOpen(false)}
+        project={returnProject}
+        onSuccess={handleReturnSuccess}
+      />
+
+      <Snackbar
+        open={!!successMessage}
+        autoHideDuration={6000}
+        onClose={() => setSuccessMessage(null)}
+        message={successMessage}
+      />
     </Box>
   );
 }

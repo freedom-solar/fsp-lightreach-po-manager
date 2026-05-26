@@ -26,6 +26,9 @@ Rails.application.routes.draw do
       get "po_generation/jobs/:id", to: "po_generation#job_status"
       post "po_generation/cancel/:id", to: "po_generation#cancel"
       post "po_generation/resend_email", to: "po_generation#resend_email"
+
+      # Material Return
+      post "material_return/request", to: "material_return#create"
     end
   end
 

@@ -1,0 +1,46 @@
+<h2 style="color: #dc3545;">Material Return Request</h2>
+
+<p style="background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; margin: 15px 0;">
+  <strong>Action Required:</strong> A material return has been requested for the following project.
+</p>
+
+<h3>Project Details</h3>
+<p><strong>Project ID:</strong> <%= @project_data[:project_id] %></p>
+<p><strong>Project Name:</strong> <%= @project_data[:project_name] %></p>
+<p><strong>Region:</strong> <%= @project_data[:region] %></p>
+<p><strong>PO ID:</strong> <%= @project_data[:po_id] %></p>
+<p><strong>System Size:</strong> <%= @project_data[:system_size] || 'N/A' %> kW</p>
+
+<% if @project_data[:po_link].present? %>
+<p><strong>PO Link:</strong> <a href="<%= @project_data[:po_link] %>">View in NetSuite</a></p>
+<% end %>
+
+<hr>
+
+<h3>Return Details</h3>
+<p><strong>Requested By:</strong> <%= @requester_email %></p>
+<p><strong>Requested At:</strong> <%= @requested_at.strftime('%B %d, %Y at %I:%M %p') %></p>
+
+<h4>Reason for Return:</h4>
+<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin: 10px 0; white-space: pre-wrap;"><%= @return_message %></div>
+
+<% if @project_data[:po_items].present? && @project_data[:po_items].any? %>
+<hr>
+<h3>PO Items</h3>
+<table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+  <thead>
+    <tr style="background-color: #f0f0f0;">
+      <th>Description</th>
+      <th>Quantity</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @project_data[:po_items].each do |item| %>
+      <tr>
+        <td><%= item[:description] %></td>
+        <td><%= item[:quantity] %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+<% end %>
