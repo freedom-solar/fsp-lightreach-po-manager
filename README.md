@@ -374,8 +374,7 @@ Sidekiq runs the `default`, `po_generation`, and `mailers` queues with concurren
 
 - Production: https://purchasing.gofreedompower.com
 - Repo: https://github.com/freedom-solar/fsp-lightreach-po-manager
-- Project Sunrise: https://projectsunrise.com
+- Project Sunrise: https://sunrise.freedomsolarpower.com
 - NetSuite SuiteTalk REST docs: https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1545564088.html
 - Lightreach (Palmetto Finance) API: https://palmetto.finance
 - Skedulo GraphQL: https://api.skedulo.com/graphql/graphql
-- Sister app — site capture verification: https://github.com/freedom-solar/sunrise-site-capture
