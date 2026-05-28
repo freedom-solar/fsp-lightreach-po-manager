@@ -440,4 +440,71 @@ RSpec.describe AddRackingQuantitiesToSoWorker, type: :worker do
       end
     end
   end
+
+  describe '#build_item_details_cache' do
+    let(:so_items) do
+      [
+        { 'item' => { 'id' => '857' }, 'quantity' => 42 },
+        { 'item' => { 'id' => '776' }, 'quantity' => 42 },
+        { 'item' => {}, 'quantity' => 1 }  # malformed line — no item id
+      ]
+    end
+
+    it 'delegates to the SuiteQL helper with the SO item ids' do
+      expect(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).with([ '857', '776' ]).and_return({})
+      worker.send(:build_item_details_cache, so_items)
+    end
+
+    it 'returns the helper result keyed by integer id' do
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+        857 => { 'itemid' => 'MSX10-435HN0B', 'itemtype' => 'InvtPart' },
+        776 => { 'itemid' => 'IQ8HC-72-M-DOM-US', 'itemtype' => 'InvtPart' }
+      )
+      cache = worker.send(:build_item_details_cache, so_items)
+      expect(cache.keys).to contain_exactly(857, 776)
+      expect(cache[857]['itemid']).to eq('MSX10-435HN0B')
+    end
+
+    it 'returns an empty hash when the SO has no items' do
+      expect(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).with([]).and_return({})
+      expect(worker.send(:build_item_details_cache, [])).to eq({})
+    end
+  end
+
+  describe '#get_part_number_from_item' do
+    let(:cache) do
+      { 857 => { 'itemid' => 'MSX10-435HN0B', 'displayname' => 'Mission Solar 435W' } }
+    end
+
+    it 'returns the SuiteQL itemid when item is in the cache' do
+      so_item = { 'item' => { 'id' => '857', 'refName' => 'fallback' } }
+      expect(worker.send(:get_part_number_from_item, so_item, cache)).to eq('MSX10-435HN0B')
+    end
+
+    it 'falls back to displayname when itemid is missing' do
+      partial_cache = { 857 => { 'displayname' => 'Mission Solar 435W' } }
+      so_item = { 'item' => { 'id' => '857' } }
+      expect(worker.send(:get_part_number_from_item, so_item, partial_cache)).to eq('Mission Solar 435W')
+    end
+
+    it 'falls back to the SO refName when the item is not in the cache' do
+      so_item = { 'item' => { 'id' => '999', 'refName' => 'Unknown SKU' } }
+      expect(worker.send(:get_part_number_from_item, so_item, cache)).to eq('Unknown SKU')
+    end
+
+    it 'falls back to itemName when refName is missing' do
+      so_item = { 'item' => { 'id' => '999' }, 'itemName' => 'From itemName' }
+      expect(worker.send(:get_part_number_from_item, so_item, cache)).to eq('From itemName')
+    end
+
+    it 'returns empty string when nothing else is available' do
+      so_item = { 'item' => { 'id' => '999' } }
+      expect(worker.send(:get_part_number_from_item, so_item, cache)).to eq('')
+    end
+
+    it 'looks up the cache by integer id (regardless of string ids on the SO)' do
+      so_item = { 'item' => { 'id' => '857' } }
+      expect(worker.send(:get_part_number_from_item, so_item, cache)).to eq('MSX10-435HN0B')
+    end
+  end
 end

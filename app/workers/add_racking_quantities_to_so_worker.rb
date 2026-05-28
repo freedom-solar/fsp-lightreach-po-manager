@@ -515,24 +515,9 @@ class AddRackingQuantitiesToSoWorker
   end
 
   def build_item_details_cache(so_items)
-    cache = {}
-
-    so_items.each do |item|
-      item_id = item.dig("item", "id")
-      next unless item_id
-      next if cache.key?(item_id) # Skip if already cached (even if value is nil)
-
-      begin
-        # Try to fetch as inventory item - will fail for service items, etc.
-        inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
-        cache[item_id] = inventory_item
-      rescue StandardError => e
-        # Skip non-inventory items (service items, etc.) - just cache as nil
-        cache[item_id] = nil
-      end
-    end
-
-    log_progress("Cached #{cache.size} inventory items")
+    item_ids = so_items.map { |i| i.dig("item", "id") }.compact
+    cache = Netsuite::InventoryItem.fetch_details_by_ids(item_ids)
+    log_progress("Cached #{cache.size} item details")
     cache
   end
 
@@ -591,17 +576,14 @@ class AddRackingQuantitiesToSoWorker
   end
 
   def get_part_number_from_item(so_item, item_details_cache)
-    # Try to get the item details to find part number
-    item_id = so_item.dig("item", "id")
+    item_id = so_item.dig("item", "id")&.to_i
 
     if item_id && item_details_cache[item_id]
-      # Use cached inventory item
-      inventory_item = item_details_cache[item_id]
-      part_number = inventory_item["itemId"] || inventory_item["name"]
+      detail = item_details_cache[item_id]
+      part_number = detail["itemid"] || detail["displayname"]
       return part_number if part_number
     end
 
-    # Fallback to item name from SO
     so_item.dig("item", "refName") || so_item["itemName"] || ""
   end
 

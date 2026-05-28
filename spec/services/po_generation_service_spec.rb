@@ -221,16 +221,310 @@ RSpec.describe PoGenerationService, type: :service do
   end
 
   describe '#filter_po_eligible_items' do
-    # This method makes NetSuite API calls for each item, so we'll test it lightly
-    # Full testing would require extensive NetSuite API mocking
-    it 'returns an array' do
-      result = service.send(:filter_po_eligible_items, [])
-      expect(result).to be_an(Array)
+    def so_line(id:, line:, quantity: 1, ref_name: nil)
+      {
+        'line' => line,
+        'item' => { 'id' => id.to_s, 'refName' => ref_name || "Item #{id}" },
+        'quantity' => quantity
+      }
     end
 
-    it 'handles empty input' do
-      result = service.send(:filter_po_eligible_items, [])
-      expect(result).to eq([])
+    def detail(itemid:, itemtype: 'InvtPart', custitem1: nil, displayname: nil)
+      { 'itemid' => itemid, 'itemtype' => itemtype, 'custitem1' => custitem1, 'displayname' => displayname }
+    end
+
+    let(:msx_module) { so_line(id: 857, line: 3, quantity: 42, ref_name: 'MSX10-435HN0B') }
+    let(:enphase) { so_line(id: 776, line: 4, quantity: 42, ref_name: 'IQ8HC-72-M-DOM-US') }
+
+    it 'returns [] for empty input' do
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return({})
+      expect(service.send(:filter_po_eligible_items, [])).to eq([])
+    end
+
+    context 'happy path' do
+      before do
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+          857 => detail(itemid: 'MSX10-435HN0B', custitem1: '2'),
+          776 => detail(itemid: 'IQ8HC-72-M-DOM-US', custitem1: '21')
+        )
+      end
+
+      it 'includes items whose category is in the eligible list' do
+        result = service.send(:filter_po_eligible_items, [ msx_module, enphase ])
+        part_numbers = result.map { |i| i[:part_number] }
+        expect(part_numbers).to contain_exactly('MSX10-435HN0B', 'IQ8HC-72-M-DOM-US')
+      end
+
+      it 'preserves quantity and SO line number on each item' do
+        result = service.send(:filter_po_eligible_items, [ msx_module ])
+        expect(result.first).to include(
+          item_id: 857,
+          quantity: 42,
+          so_line_number: 3,
+          category: 2,
+          category_name: 'Modules'
+        )
+      end
+
+      it 'batches all item lookups into a single NetSuite call' do
+        expect(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).once.and_return(
+          857 => detail(itemid: 'MSX10-435HN0B', custitem1: '2'),
+          776 => detail(itemid: 'IQ8HC-72-M-DOM-US', custitem1: '21')
+        )
+        service.send(:filter_po_eligible_items, [ msx_module, enphase ])
+      end
+    end
+
+    context 'regression: SuiteQL returns no row for an item' do
+      # This is the exact failure mode that dropped MSX10-435HN0B yesterday:
+      # the lookup silently returned nothing and the item disappeared from the PO.
+      before do
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+          776 => detail(itemid: 'IQ8HC-72-M-DOM-US', custitem1: '21')
+          # 857 (MSX) is missing on purpose
+        )
+      end
+
+      it 'skips the missing item' do
+        result = service.send(:filter_po_eligible_items, [ msx_module, enphase ])
+        expect(result.map { |i| i[:item_id] }).to eq([ 776 ])
+      end
+
+      it 'logs a warning so the drop is visible' do
+        expect(service).to receive(:log_progress).with(
+          a_string_matching(/Skipped SO line 3 .*MSX10-435HN0B.*item 857 not returned/),
+          level: :warning
+        )
+        service.send(:filter_po_eligible_items, [ msx_module, enphase ])
+      end
+    end
+
+    context 'when an item has an ineligible category' do
+      let(:service_fee) { so_line(id: 500, line: 1, quantity: 1, ref_name: 'Service Fee') }
+
+      before do
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+          500 => detail(itemid: 'SERVICE-FEE', custitem1: '99')
+        )
+      end
+
+      it 'skips the item' do
+        expect(service.send(:filter_po_eligible_items, [ service_fee ])).to eq([])
+      end
+
+      it 'logs a warning naming the category' do
+        expect(service).to receive(:log_progress).with(
+          a_string_matching(/Skipped SERVICE-FEE: category 99 not in eligible list/),
+          level: :warning
+        )
+        service.send(:filter_po_eligible_items, [ service_fee ])
+      end
+    end
+
+    context 'when an item is not an inventory item' do
+      let(:install_service) { so_line(id: 300, line: 2, quantity: 1, ref_name: 'Lightreach Lease Installation Services') }
+
+      before do
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+          300 => detail(itemid: 'INSTALL-SERVICE', itemtype: 'Service', custitem1: '2')
+        )
+      end
+
+      it 'skips silently — service items are expected on every SO' do
+        expect(service).not_to receive(:log_progress)
+        expect(service.send(:filter_po_eligible_items, [ install_service ])).to eq([])
+      end
+    end
+
+    context 'when an item has zero quantity' do
+      let(:zero_qty_item) { so_line(id: 857, line: 5, quantity: 0, ref_name: 'MSX10-435HN0B') }
+
+      before do
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+          857 => detail(itemid: 'MSX10-435HN0B', custitem1: '2')
+        )
+      end
+
+      it 'skips the item' do
+        expect(service.send(:filter_po_eligible_items, [ zero_qty_item ])).to eq([])
+      end
+    end
+
+    context 'when an SO line has no item id' do
+      let(:bad_line) { { 'line' => 99, 'item' => {}, 'quantity' => 1 } }
+
+      it 'skips it without crashing' do
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return({})
+        expect(service.send(:filter_po_eligible_items, [ bad_line ])).to eq([])
+      end
+    end
+
+    context 'when SuiteQL itself fails' do
+      it 'propagates the error so the job is marked failed (no silent drop)' do
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_raise(RuntimeError, '503 Service Unavailable')
+        expect {
+          service.send(:filter_po_eligible_items, [ msx_module ])
+        }.to raise_error(RuntimeError, /503/)
+      end
+    end
+
+    it 'uses every category in the documented eligible list' do
+      # Locks the behavior: if someone removes 33 (no name mapping) or any
+      # other id from the list, this test catches the change.
+      so_items = [ 2, 3, 5, 18, 21, 33 ].each_with_index.map do |cat, i|
+        so_line(id: 100 + i, line: i + 1, quantity: 1, ref_name: "ITEM-#{cat}")
+      end
+      details = [ 2, 3, 5, 18, 21, 33 ].each_with_index.each_with_object({}) do |(cat, i), h|
+        h[100 + i] = detail(itemid: "ITEM-#{cat}", custitem1: cat.to_s)
+      end
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(details)
+
+      result = service.send(:filter_po_eligible_items, so_items)
+      expect(result.length).to eq(6)
+    end
+  end
+
+  describe '#extract_items_from_po' do
+    def po_line(id:, line:, quantity: 1)
+      { 'line' => line, 'item' => { 'id' => id.to_s }, 'quantity' => quantity }
+    end
+
+    def detail(itemid:, itemtype: 'InvtPart', custitem1: nil)
+      { 'itemid' => itemid, 'itemtype' => itemtype, 'custitem1' => custitem1 }
+    end
+
+    let(:purchase_order) do
+      { 'item' => { 'items' => [ po_line(id: 857, line: 1, quantity: 42), po_line(id: 776, line: 2, quantity: 42) ] } }
+    end
+
+    it 'returns an array of items keyed off the PO line items' do
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+        857 => detail(itemid: 'MSX10-435HN0B', custitem1: '2'),
+        776 => detail(itemid: 'IQ8HC-72-M-DOM-US', custitem1: '21')
+      )
+
+      result = service.send(:extract_items_from_po, purchase_order)
+      expect(result.map { |i| i[:part_number] }).to contain_exactly('MSX10-435HN0B', 'IQ8HC-72-M-DOM-US')
+      expect(result.first).to include(item_id: 857, quantity: 42, so_line_number: 1)
+    end
+
+    it 'handles a PO with no items' do
+      empty_po = { 'item' => { 'items' => [] } }
+      expect(service.send(:extract_items_from_po, empty_po)).to eq([])
+    end
+
+    it 'handles a PO with no item key at all' do
+      expect(service.send(:extract_items_from_po, {})).to eq([])
+    end
+
+    it 'skips items missing from the SuiteQL response' do
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+        776 => detail(itemid: 'IQ8HC-72-M-DOM-US', custitem1: '21')
+      )
+      result = service.send(:extract_items_from_po, purchase_order)
+      expect(result.map { |i| i[:item_id] }).to eq([ 776 ])
+    end
+
+    it 'skips non-inventory items silently' do
+      po_with_service = { 'item' => { 'items' => [ po_line(id: 300, line: 1) ] } }
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+        300 => detail(itemid: 'SERVICE', itemtype: 'Service', custitem1: '2')
+      )
+      expect(service.send(:extract_items_from_po, po_with_service)).to eq([])
+    end
+
+    it 'skips zero-quantity lines' do
+      po_with_zero = { 'item' => { 'items' => [ po_line(id: 857, line: 1, quantity: 0) ] } }
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+        857 => detail(itemid: 'MSX10-435HN0B', custitem1: '2')
+      )
+      expect(service.send(:extract_items_from_po, po_with_zero)).to eq([])
+    end
+
+    it 'does NOT filter by eligible category — PO comparison includes all inventory items' do
+      # extract_items_from_po is used to read what's already on a PO,
+      # not to decide what to put on one. It must not drop "ineligible" categories
+      # or downstream comparisons would silently disagree with NetSuite.
+      po = { 'item' => { 'items' => [ po_line(id: 999, line: 1) ] } }
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+        999 => detail(itemid: 'WEIRD-CAT', custitem1: '99')
+      )
+      result = service.send(:extract_items_from_po, po)
+      expect(result.length).to eq(1)
+      expect(result.first[:category]).to eq(99)
+    end
+  end
+
+  describe '#racking_quantities_zeroed?' do
+    let(:project_id) { 'SF-12345' }
+
+    def so_line(id:, line:, quantity: 1)
+      { 'line' => line, 'item' => { 'id' => id.to_s }, 'quantity' => quantity }
+    end
+
+    context 'when the SO contains PSR-M168-US (DOMESTIC) with quantity > 0' do
+      before do
+        allow(service).to receive(:fetch_sales_order_data).and_return(
+          so_items: [ so_line(id: 555, line: 1, quantity: 10) ]
+        )
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+          555 => { 'itemid' => 'PSR-M168-US (DOMESTIC)', 'itemtype' => 'InvtPart' }
+        )
+      end
+
+      it 'returns false (quantities are NOT zeroed)' do
+        expect(service.send(:racking_quantities_zeroed?, project_id)).to be false
+      end
+    end
+
+    context 'when PSR-M168-US (DOMESTIC) is present but quantity is 0' do
+      before do
+        allow(service).to receive(:fetch_sales_order_data).and_return(
+          so_items: [ so_line(id: 555, line: 1, quantity: 0) ]
+        )
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+          555 => { 'itemid' => 'PSR-M168-US (DOMESTIC)', 'itemtype' => 'InvtPart' }
+        )
+      end
+
+      it 'returns true' do
+        expect(service.send(:racking_quantities_zeroed?, project_id)).to be true
+      end
+    end
+
+    context 'when PSR-M168-US (DOMESTIC) is not on the SO' do
+      before do
+        allow(service).to receive(:fetch_sales_order_data).and_return(
+          so_items: [ so_line(id: 600, line: 1, quantity: 5) ]
+        )
+        allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).and_return(
+          600 => { 'itemid' => 'OTHER-ITEM', 'itemtype' => 'InvtPart' }
+        )
+      end
+
+      it 'returns true (treat as zeroed)' do
+        expect(service.send(:racking_quantities_zeroed?, project_id)).to be true
+      end
+    end
+
+    context 'when sales order data cannot be fetched' do
+      before do
+        allow(service).to receive(:fetch_sales_order_data).and_return(nil)
+      end
+
+      it 'returns true' do
+        expect(service.send(:racking_quantities_zeroed?, project_id)).to be true
+      end
+    end
+
+    context 'when SO has no items' do
+      before do
+        allow(service).to receive(:fetch_sales_order_data).and_return(so_items: [])
+      end
+
+      it 'returns true' do
+        expect(service.send(:racking_quantities_zeroed?, project_id)).to be true
+      end
     end
   end
 

@@ -984,6 +984,21 @@ module Netsuite
             @object = "inventoryItem"
             super
         end
+
+        # Batch-fetch type and category for a set of item ids via SuiteQL.
+        # Returns a hash keyed by integer id: { 857 => { "itemid"=>"MSX10-435HN0B", "itemtype"=>"InvtPart", "custitem1"=>"2" } }
+        # Unlike InventoryItem.find, this works uniformly for all item subtypes (assemblies, services, etc.)
+        # and does not rely on 401 responses to signal "wrong record type."
+        def self.fetch_details_by_ids(ids)
+            int_ids = Array(ids).map(&:to_i).reject(&:zero?).uniq
+            return {} if int_ids.empty?
+
+            client = Client.new
+            sql = "SELECT id, itemid, displayname, itemtype, custitem1 FROM item WHERE id IN (#{int_ids.join(',')})"
+            response = client.suiteql(query: sql)
+            rows = response["items"] || []
+            rows.each_with_object({}) { |row, h| h[row["id"].to_i] = row }
+        end
     end
 
     # Item Group Class
