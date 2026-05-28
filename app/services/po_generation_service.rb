@@ -445,39 +445,33 @@ class PoGenerationService
   end
 
   def extract_items_from_po(purchase_order)
-    po_items = []
     items = purchase_order.dig("item", "items") || []
+    item_ids = items.map { |i| i.dig("item", "id") }.compact
+    details = Netsuite::InventoryItem.fetch_details_by_ids(item_ids)
 
-    items.each do |item|
-      item_id = item.dig("item", "id")
+    items.filter_map do |item|
+      item_id = item.dig("item", "id")&.to_i
       next unless item_id
 
-      # Fetch inventory item, skipping non-inventory items (serviceitem, etc.)
-      begin
-        inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
-        next unless inventory_item.is_a?(Hash)
-      rescue StandardError
-        # Skip non-inventory items (serviceitem, etc.) that can't be fetched as inventoryitem
-        next
-      end
+      detail = details[item_id]
+      next unless detail
+      next unless detail["itemtype"] == "InvtPart"
 
-      category = inventory_item.dig("custitem1", "id")&.to_i
       quantity = item["quantity"].to_i
       next if quantity.zero?
 
-      part_number = inventory_item["itemId"] || inventory_item["name"]
-      po_items << {
+      category = detail["custitem1"]&.to_i
+      part_number = detail["itemid"] || detail["displayname"]
+      {
         item_id: item_id,
         part_number: part_number,
-        description: part_number,  # Use part number as description
+        description: part_number,
         quantity: quantity,
         category: category,
         category_name: category_name_for(category),
         so_line_number: item["line"]
       }
     end
-
-    po_items
   end
 
   def fetch_sales_order_data(project_id)
@@ -555,40 +549,43 @@ class PoGenerationService
 
   def filter_po_eligible_items(so_items)
     eligible_categories = [ 2, 3, 5, 18, 21, 33 ]
-    po_items = []
 
-    so_items.each do |item|
-      item_id = item.dig("item", "id")
+    item_ids = so_items.map { |i| i.dig("item", "id") }.compact
+    details = Netsuite::InventoryItem.fetch_details_by_ids(item_ids)
+
+    so_items.filter_map do |item|
+      item_id = item.dig("item", "id")&.to_i
       next unless item_id
 
-      # Fetch inventory item, skipping non-inventory items (serviceitem, etc.)
-      begin
-        inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
-        next unless inventory_item.is_a?(Hash)
-      rescue StandardError
-        # Skip non-inventory items (serviceitem, etc.) that can't be fetched as inventoryitem
+      detail = details[item_id]
+      ref_name = item.dig("item", "refName")
+      unless detail
+        log_progress("Skipped SO line #{item['line']} (#{ref_name}): item #{item_id} not returned by NetSuite", level: :warning)
         next
       end
 
-      category = inventory_item.dig("custitem1", "id")&.to_i
-      next unless eligible_categories.include?(category)
+      next unless detail["itemtype"] == "InvtPart"
+
+      category = detail["custitem1"]&.to_i
+      unless eligible_categories.include?(category)
+        log_progress("Skipped #{detail['itemid']}: category #{category.inspect} not in eligible list", level: :warning)
+        next
+      end
 
       quantity = item["quantity"].to_i
       next if quantity.zero?
 
-      part_number = inventory_item["itemId"] || inventory_item["name"]
-      po_items << {
+      part_number = detail["itemid"] || detail["displayname"]
+      {
         item_id: item_id,
         part_number: part_number,
-        description: part_number,  # Use part number as description
+        description: part_number,
         quantity: quantity,
         category: category,
         category_name: category_name_for(category),
         so_line_number: item["line"]
       }
     end
-
-    po_items
   end
 
   def add_racking_quantities_to_so(project_id)
@@ -605,20 +602,15 @@ class PoGenerationService
     so_items = so_data[:so_items] || []
     return true if so_items.empty?
 
+    item_ids = so_items.map { |i| i.dig("item", "id") }.compact
+    details = Netsuite::InventoryItem.fetch_details_by_ids(item_ids)
+
     psr_m168_item = so_items.find do |item|
-      item_id = item.dig("item", "id")
-      next false unless item_id
+      item_id = item.dig("item", "id")&.to_i
+      detail = details[item_id]
+      next false unless detail
 
-      # Fetch inventory item, skipping non-inventory items (serviceitem, etc.)
-      begin
-        inventory_item = Netsuite::InventoryItem.find(item_id, raise_on_not_found: false)
-        next false unless inventory_item.is_a?(Hash)
-      rescue StandardError
-        # Skip non-inventory items (serviceitem, etc.) that can't be fetched as inventoryitem
-        next false
-      end
-
-      part_number = inventory_item["itemId"] || inventory_item["name"]
+      part_number = detail["itemid"] || detail["displayname"]
       part_number == "PSR-M168-US (DOMESTIC)"
     end
 
