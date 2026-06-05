@@ -441,6 +441,152 @@ RSpec.describe AddRackingQuantitiesToSoWorker, type: :worker do
     end
   end
 
+  describe '#update_racking_quantities (new-line fallback)' do
+    let(:sales_order) do
+      {
+        'id' => sales_order_id,
+        'item' => {
+          'items' => [
+            {
+              'line' => 100,
+              'item' => { 'id' => '938' },
+              'quantity' => 29,
+              'quantityFulfilled' => 0,
+              'class' => { 'id' => '10' },
+              'location' => { 'id' => '7' }
+            }
+          ]
+        }
+      }
+    end
+
+    # Stand-in for Netsuite::Client used by fetch_ns_item_ids_for_bom_parts
+    let(:ns_client) { instance_double(Netsuite::Client) }
+
+    before do
+      allow(Netsuite::SalesOrder).to receive(:update).and_return({ 'status' => 'success' })
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).with([ '938' ]).and_return(
+        938 => { 'itemid' => 'LR5-54HPB-400M', 'itemtype' => 'InvtPart' }
+      )
+      allow(Netsuite::Client).to receive(:new).and_return(ns_client)
+    end
+
+    it 'adds new SO lines for BOM racking items that have no matching SO line' do
+      racking_items = [
+        { part_number: 'PSR-M168-US', quantity: 27, description: 'Pegasus Rail' },
+        { part_number: 'PSR-MCZ-US',  quantity: 82, description: 'Pegasus Multi-Clamp' }
+      ]
+
+      expect(ns_client).to receive(:suiteql) do |query:|
+        expect(query).to include("itemtype = 'InvtPart'")
+        expect(query).to include("'PSR-M168-US (DOMESTIC)'")
+        expect(query).to include("'PSR-MCZ-US (DOMESTIC)'")
+        {
+          'items' => [
+            { 'id' => '913', 'itemid' => 'PSR-M168-US (DOMESTIC)' },
+            { 'id' => '915', 'itemid' => 'PSR-MCZ-US (DOMESTIC)' }
+          ]
+        }
+      end
+
+      expect(Netsuite::SalesOrder).to receive(:update) do |so_id, body|
+        expect(so_id).to eq(sales_order_id)
+        items = body.dig(:item, :items)
+
+        new_rail = items.find { |i| i.dig(:item, :id) == '913' }
+        expect(new_rail).to include(quantity: 27, amount: 0)
+        expect(new_rail['class']).to eq('id' => '10')
+        expect(new_rail['location']).to eq('id' => '7')
+
+        new_clamp = items.find { |i| i.dig(:item, :id) == '915' }
+        expect(new_clamp).to include(quantity: 82, amount: 0)
+
+        { 'status' => 'success' }
+      end
+
+      worker.send(:update_racking_quantities, project_id, sales_order_id, sales_order, racking_items)
+    end
+
+    it 'aggregates quantities when multiple BOM parts map to the same NetSuite item' do
+      racking_items = [
+        { part_number: 'PSR-MCZ-US', quantity: 50, description: '' },
+        { part_number: 'PSR-HEC',    quantity: 30, description: '' } # also maps to PSR-MCZ-US (DOMESTIC)
+      ]
+
+      allow(ns_client).to receive(:suiteql).and_return(
+        'items' => [ { 'id' => '915', 'itemid' => 'PSR-MCZ-US (DOMESTIC)' } ]
+      )
+
+      expect(Netsuite::SalesOrder).to receive(:update) do |_so_id, body|
+        items = body.dig(:item, :items)
+        new_lines = items.select { |i| i.dig(:item, :id) == '915' }
+        expect(new_lines.size).to eq(1)
+        expect(new_lines.first[:quantity]).to eq(80) # 50 + 30
+        { 'status' => 'success' }
+      end
+
+      worker.send(:update_racking_quantities, project_id, sales_order_id, sales_order, racking_items)
+    end
+
+    it 'logs a warning and skips items with no NetSuite match' do
+      racking_items = [
+        { part_number: 'PSR-NOTREAL', quantity: 5, description: '' }
+      ]
+
+      allow(ns_client).to receive(:suiteql).and_return('items' => [])
+
+      expect(worker).to receive(:log_progress).at_least(:once) do |msg, **opts|
+        if msg.include?('PSR-NOTREAL')
+          expect(opts[:level]).to eq(:warning)
+          expect(msg).to include('racking will be missing')
+        end
+      end
+
+      # No SO update if there's nothing to add or change.
+      expect(Netsuite::SalesOrder).not_to receive(:update)
+
+      worker.send(:update_racking_quantities, project_id, sales_order_id, sales_order, racking_items)
+    end
+
+    it 'does not call SuiteQL when every BOM item matches an existing SO line' do
+      so_with_rail = sales_order.deep_dup
+      so_with_rail['item']['items'] << {
+        'line' => 200,
+        'item' => { 'id' => '913' },
+        'quantity' => 0,
+        'quantityFulfilled' => 0
+      }
+      allow(Netsuite::InventoryItem).to receive(:fetch_details_by_ids).with([ '938', '913' ]).and_return(
+        938 => { 'itemid' => 'LR5-54HPB-400M', 'itemtype' => 'InvtPart' },
+        913 => { 'itemid' => 'PSR-M168-US (DOMESTIC)', 'itemtype' => 'InvtPart' }
+      )
+
+      racking_items = [ { part_number: 'PSR-M168-US', quantity: 27, description: '' } ]
+
+      expect(ns_client).not_to receive(:suiteql)
+      expect(Netsuite::SalesOrder).to receive(:update).and_return({ 'status' => 'success' })
+
+      worker.send(:update_racking_quantities, project_id, sales_order_id, so_with_rail, racking_items)
+    end
+  end
+
+  describe '#candidate_ns_part_numbers' do
+    it 'maps PSR-B168 first to the DOMESTIC variant of M168' do
+      candidates = worker.send(:candidate_ns_part_numbers, 'PSR-B168')
+      expect(candidates.first).to eq('PSR-M168-US (DOMESTIC)')
+    end
+
+    it 'tries the DOMESTIC suffix then bare part for unmapped items' do
+      candidates = worker.send(:candidate_ns_part_numbers, 'PSR-LUG')
+      expect(candidates).to eq([ 'PSR-LUG (DOMESTIC)', 'PSR-LUG' ])
+    end
+
+    it 'returns unique candidates' do
+      candidates = worker.send(:candidate_ns_part_numbers, 'PSR-MLP-US')
+      expect(candidates).to eq([ 'PSR-MLP-US (DOMESTIC)', 'PSR-MLP-US' ])
+    end
+  end
+
   describe '#build_item_details_cache' do
     let(:so_items) do
       [

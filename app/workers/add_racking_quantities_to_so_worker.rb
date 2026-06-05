@@ -450,13 +450,14 @@ class AddRackingQuantitiesToSoWorker
     end
 
     # Pre-fetch all inventory item details to avoid repeated API calls
-    puts "Pre-fetching inventory item details for #{so_items.size} items..."
+    log_progress("Pre-fetching inventory item details for #{so_items.size} items")
     item_details_cache = build_item_details_cache(so_items)
 
     # Build a hash of aggregated quantities by SO line
     # This handles cases where multiple BOM items map to the same SO item
     # (e.g., PSR-HEC and PSR-MCZ-US both map to PSR-MCZ-US (DOMESTIC))
     line_quantities = {}
+    unmatched_items = []
 
     racking_items.each do |racking_item|
       bom_part_number = racking_item[:part_number]
@@ -475,18 +476,18 @@ class AddRackingQuantitiesToSoWorker
 
         # Skip if line item has already been fulfilled
         if item_fulfilled?(matching_so_item)
-          puts "  Skipping fulfilled item: BOM #{bom_part_number} -> SO line #{line_number} " \
-               "(quantityFulfilled: #{matching_so_item['quantityFulfilled']})"
+          log_progress("  Skipping fulfilled item: BOM #{bom_part_number} -> SO line #{line_number} " \
+                       "(quantityFulfilled: #{matching_so_item['quantityFulfilled']})", level: :warning)
           next
         end
 
-        puts "  Match found: BOM #{bom_part_number} (qty: #{bom_quantity}) -> SO line #{line_number} " \
-             "#{so_part_number} (current qty: #{current_quantity})"
+        log_progress("  Match found: BOM #{bom_part_number} (qty: #{bom_quantity}) -> SO line #{line_number} " \
+                     "#{so_part_number} (current qty: #{current_quantity})")
 
         # Aggregate quantities for items that map to the same SO line
         if line_quantities[line_number]
           line_quantities[line_number][:new_quantity] += bom_quantity
-          puts "    Aggregating with existing quantity: total now #{line_quantities[line_number][:new_quantity]}"
+          log_progress("    Aggregating with existing quantity: total now #{line_quantities[line_number][:new_quantity]}")
         else
           line_quantities[line_number] = {
             line: line_number,
@@ -496,22 +497,99 @@ class AddRackingQuantitiesToSoWorker
           }
         end
       else
-        puts "  WARNING: No matching item found in Sales Order for #{bom_part_number}"
+        unmatched_items << { part_number: bom_part_number, quantity: bom_quantity }
       end
     end
+
+    # Resolve NetSuite item ids for BOM lines with no matching SO line, and aggregate
+    # quantities for any duplicates that resolve to the same NetSuite item.
+    new_lines_by_item_id = resolve_new_racking_lines(project_id, unmatched_items)
 
     # Build updates needed (only where quantity changed)
     updates_needed = line_quantities.values.reject do |update|
       update[:old_quantity] == update[:new_quantity]
     end
 
-    if updates_needed.empty?
-      puts "No quantity updates needed - all quantities already match"
+    if updates_needed.empty? && new_lines_by_item_id.empty?
+      log_progress("No quantity updates or new racking lines needed - all quantities already match")
       return
     end
 
     # Apply updates to Sales Order
-    apply_quantity_updates(sales_order_id, sales_order, updates_needed)
+    apply_quantity_updates(sales_order_id, sales_order, updates_needed, new_lines_by_item_id)
+  end
+
+  # For unmatched BOM racking items, look up NetSuite item ids and aggregate
+  # quantities by id (so multiple BOM lines that map to the same NS item — e.g.,
+  # PSR-HEC and PSR-MCZ-US both map to PSR-MCZ-US (DOMESTIC) — get one new line).
+  def resolve_new_racking_lines(project_id, unmatched_items)
+    return {} if unmatched_items.empty?
+
+    ns_item_ids_by_part = fetch_ns_item_ids_for_bom_parts(unmatched_items.map { |i| i[:part_number] }.uniq)
+
+    new_lines_by_item_id = {}
+    unmatched_items.each do |item|
+      bom_part_number = item[:part_number]
+      ns_item_id = ns_item_ids_by_part[bom_part_number]
+
+      if ns_item_id
+        log_progress("  No SO line for BOM #{bom_part_number} - will add new line " \
+                     "(NetSuite item id #{ns_item_id}, qty #{item[:quantity]})")
+        entry = new_lines_by_item_id[ns_item_id] ||= { quantity: 0, bom_parts: [] }
+        entry[:quantity] += item[:quantity]
+        entry[:bom_parts] << bom_part_number
+      else
+        log_progress("  WARNING: No matching SO line and no NetSuite item id resolved for " \
+                     "BOM #{bom_part_number} - racking will be missing from PO", level: :warning)
+      end
+    end
+    new_lines_by_item_id
+  rescue StandardError => e
+    log_error(project_id, "Error resolving NetSuite item ids for new racking lines: #{e.message}")
+    {}
+  end
+
+  # Look up NetSuite item ids for a list of BOM part numbers. Returns a hash
+  # of bom_part_number => netsuite_item_id (integer). Missing entries mean no
+  # InvtPart with a matching itemid was found.
+  def fetch_ns_item_ids_for_bom_parts(bom_part_numbers)
+    candidates_by_bom_part = bom_part_numbers.each_with_object({}) do |bom_part, h|
+      h[bom_part] = candidate_ns_part_numbers(bom_part)
+    end
+
+    all_candidates = candidates_by_bom_part.values.flatten.uniq
+    return {} if all_candidates.empty?
+
+    quoted = all_candidates.map { |c| "'#{c.gsub("'", "''")}'" }.join(",")
+    sql = "SELECT id, itemid FROM item WHERE itemtype = 'InvtPart' AND itemid IN (#{quoted})"
+    response = Netsuite::Client.new.suiteql(query: sql)
+    rows = response["items"] || []
+    ns_id_by_part = rows.each_with_object({}) { |row, h| h[row["itemid"]] = row["id"].to_i }
+
+    candidates_by_bom_part.each_with_object({}) do |(bom_part, candidates), result|
+      hit = candidates.find { |c| ns_id_by_part[c] }
+      result[bom_part] = ns_id_by_part[hit] if hit
+    end
+  end
+
+  # Ordered list of NetSuite itemid candidates for a BOM part number. The first
+  # candidate that exists as an InvtPart wins. Mirrors the explicit mappings used
+  # by find_matching_so_item, then tries the "(DOMESTIC)" variant, then the bare
+  # part number.
+  def candidate_ns_part_numbers(bom_part_number)
+    explicit = case bom_part_number
+    when "PSR-B168", "PSR-B84", "PSR-B168-US"
+      "PSR-M168-US (DOMESTIC)"
+    when "PSR-MCB", "PSR-HEC", "PSR-MCZ-US"
+      "PSR-MCZ-US (DOMESTIC)"
+    when "PSR-SPL", "PSR-SPLS-US"
+      "PSR-SPLS-US (DOMESTIC)"
+    when "PSR-MLP-US"
+      "PSR-MLP-US (DOMESTIC)"
+    when "PSR-SRC", "PSR-SRC-US"
+      "PSR-SRC-US (DOMESTIC)"
+    end
+    [ explicit, "#{bom_part_number} (DOMESTIC)", bom_part_number ].compact.uniq
   end
 
   def build_item_details_cache(so_items)
@@ -587,11 +665,11 @@ class AddRackingQuantitiesToSoWorker
     so_item.dig("item", "refName") || so_item["itemName"] || ""
   end
 
-  def apply_quantity_updates(sales_order_id, sales_order, updates)
-    puts "\nApplying #{updates.size} quantity updates to Sales Order #{sales_order_id}:"
+  def apply_quantity_updates(sales_order_id, sales_order, updates, new_lines_by_item_id = {})
+    log_progress("Applying #{updates.size} quantity updates and #{new_lines_by_item_id.size} new racking lines to Sales Order #{sales_order_id}")
 
     updates.each do |update|
-      puts "  Line #{update[:line]}: #{update[:part_number]} - #{update[:old_quantity]} -> #{update[:new_quantity]}"
+      log_progress("  Line #{update[:line]}: #{update[:part_number]} - #{update[:old_quantity]} -> #{update[:new_quantity]}")
     end
 
     # Build the update body with modified item quantities
@@ -602,6 +680,20 @@ class AddRackingQuantitiesToSoWorker
       item["quantity"] = update[:new_quantity] if item
     end
 
+    if new_lines_by_item_id.any?
+      class_and_location = extract_class_and_location(items)
+      new_lines_by_item_id.each do |item_id, info|
+        new_item = {
+          item: { id: item_id.to_s },
+          quantity: info[:quantity],
+          amount: 0
+        }.merge(class_and_location)
+        items << new_item
+        log_progress("  Added new racking line: NetSuite item #{item_id} qty #{info[:quantity]} " \
+                     "(from BOM #{info[:bom_parts].join(', ')})", level: :success)
+      end
+    end
+
     body = {
       item: {
         items: items
@@ -610,7 +702,7 @@ class AddRackingQuantitiesToSoWorker
 
     # Update the Sales Order
     result = Netsuite::SalesOrder.update(sales_order_id, body)
-    puts "Sales Order update result: #{result}"
+    log_progress("Sales Order #{sales_order_id} updated", level: :success)
     result
   end
 
