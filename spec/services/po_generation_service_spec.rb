@@ -685,8 +685,8 @@ RSpec.describe PoGenerationService, type: :service do
       expect(service.send(:location_name_for, 3)).to eq('Dallas')
     end
 
-    it 'returns San Antonio for ID 4' do
-      expect(service.send(:location_name_for, 4)).to eq('San Antonio')
+    it 'returns Austin for ID 4 (San Antonio merged into Austin)' do
+      expect(service.send(:location_name_for, 4)).to eq('Austin')
     end
 
     it 'returns Tampa for ID 7' do
