@@ -230,6 +230,25 @@ RSpec.describe AddRackingQuantitiesToSoWorker, type: :worker do
 
       expect(result).to eq([])
     end
+
+    context 'when description contains a stray digit before EA' do
+      let(:mock_pdf_text) do
+        # The "5" in "COMBINER 5" must not be picked up as the quantity;
+        # the real qty is the trailing "1" in the EA column.
+        <<~PDF
+          X-IQ-AM1-240-5-HDK SLC ENPHASE IQ COMBINER 5 WITH ENVOY MONITORING 1 EA
+        PDF
+      end
+
+      it 'uses the trailing qty column, not a digit from the description' do
+        result = worker.send(:parse_items_from_bom, mock_bom_file,
+                            search_string: 'X-IQ-AM1-240-5-HDK',
+                            item_name: 'X-IQ-AM1-240-5-HDK')
+
+        expect(result.length).to eq(1)
+        expect(result[0][:quantity]).to eq(1)
+      end
+    end
   end
 
   describe '#item_fulfilled?' do
