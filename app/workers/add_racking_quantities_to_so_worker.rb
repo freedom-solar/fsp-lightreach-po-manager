@@ -227,7 +227,11 @@ class AddRackingQuantitiesToSoWorker
 
     text.each_line do |line|
       next unless line.include?(search_string)
-      next unless line =~ /(\d+)\s+EA/i
+      # Anchor to end of line: qty/EA is the trailing column in a BOM row.
+      # Unanchored matching can grab a digit from the description (e.g. the "5"
+      # in "ENPHASE IQ COMBINER 5; WITH ENVOY MONITORING") if PDF text
+      # extraction rewrites the punctuation between the digit and "EA".
+      next unless line =~ /(\d+)\s+EA\s*$/i
 
       quantity = ::Regexp.last_match(1).to_i
 
