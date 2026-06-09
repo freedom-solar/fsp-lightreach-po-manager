@@ -57,6 +57,8 @@ class AddRackingQuantitiesToSoWorker
   APKE00110_ITEM_ID = "969"
   # NetSuite item ID for APKE00115
   APKE00115_ITEM_ID = "970"
+  # NetSuite item ID for Generac PWRmanager (G0080090-PC2)
+  GENERAC_PWR_MANAGER_ITEM_ID = "972"
 
   # BOM items to parse and add to SO (standard flow)
   BOM_ITEM_CONFIGS = [
@@ -83,7 +85,8 @@ class AddRackingQuantitiesToSoWorker
     { search_string: "APKE00102", item_id: APKE00102_ITEM_ID, item_name: "APKE00102" },
     { search_string: "APKE00105", item_id: APKE00105_ITEM_ID, item_name: "APKE00105" },
     { search_string: "APKE00110", item_id: APKE00110_ITEM_ID, item_name: "APKE00110" },
-    { search_string: "APKE00115", item_id: APKE00115_ITEM_ID, item_name: "APKE00115" }
+    { search_string: "APKE00115", item_id: APKE00115_ITEM_ID, item_name: "APKE00115" },
+    { search_string: "G0080090-PC2", item_id: GENERAC_PWR_MANAGER_ITEM_ID, item_name: "Generac PWRmanager" }
   ].freeze
 
   def perform(project_id, job_id: nil, skip_status_check: false)
