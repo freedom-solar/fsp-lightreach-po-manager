@@ -59,6 +59,10 @@ class AddRackingQuantitiesToSoWorker
   APKE00115_ITEM_ID = "970"
   # NetSuite item ID for Generac PWRmanager (G0080090-PC2)
   GENERAC_PWR_MANAGER_ITEM_ID = "972"
+  # NetSuite item ID for PWRMICRO SMART COMBINER (APKEAC100)
+  PWRMICRO_SMART_COMBINER_ITEM_ID = "928"
+  # NetSuite item ID for PWRMICRO PM-820-US 820W DUAL INPUT (APKEPM820)
+  PWRMICRO_PM_820_US_ITEM_ID = "929"
 
   # BOM items to parse and add to SO (standard flow)
   BOM_ITEM_CONFIGS = [
@@ -86,7 +90,13 @@ class AddRackingQuantitiesToSoWorker
     { search_string: "APKE00105", item_id: APKE00105_ITEM_ID, item_name: "APKE00105" },
     { search_string: "APKE00110", item_id: APKE00110_ITEM_ID, item_name: "APKE00110" },
     { search_string: "APKE00115", item_id: APKE00115_ITEM_ID, item_name: "APKE00115" },
-    { search_string: "G0080090-PC2", item_id: GENERAC_PWR_MANAGER_ITEM_ID, item_name: "Generac PWRmanager" }
+    { search_string: "G0080090-PC2", item_id: GENERAC_PWR_MANAGER_ITEM_ID, item_name: "Generac PWRmanager" },
+    # APKEAC100 also appears inside the descriptions of BR220/BR230 ("WITH ... APKEAC100"),
+    # so we anchor the match to the part-number column at the start of the line.
+    { search_string: "APKEAC100", item_id: PWRMICRO_SMART_COMBINER_ITEM_ID,
+      item_name: "PWRMICRO SMART COMBINER", match_at_line_start: true },
+    { search_string: "APKEPM820", item_id: PWRMICRO_PM_820_US_ITEM_ID,
+      item_name: "PWRMICRO PM-820-US", match_at_line_start: true }
   ].freeze
 
   def perform(project_id, job_id: nil, skip_status_check: false)
@@ -127,9 +137,13 @@ class AddRackingQuantitiesToSoWorker
                                                          item_name: "Enphase Envoy")
     add_envoy_items_to_so(project_id, sales_order_id, envoy_items) if envoy_items.any?
 
-    # Handle Combiner-WIFI-5 (special case: adds/removes based on HDK presence)
+    # Handle Combiner-WIFI-5 (special case: adds/removes based on HDK presence).
+    # Anchor to line start: X-IQ-AM1-240-5-HDK is referenced in the description of
+    # BR220 ("WITH X-IQ-AM1-240-5-HDK OR APKEAC100"), so a substring match would
+    # add Combiner-WIFI-5 on jobs that don't actually have an HDK row.
     hdk_items = parse_items_from_bom(bom_data["file"], search_string: "X-IQ-AM1-240-5-HDK",
-                                                       item_name: "X-IQ-AM1-240-5-HDK")
+                                                       item_name: "X-IQ-AM1-240-5-HDK",
+                                                       match_at_line_start: true)
     handle_combiner_wifi_on_so(project_id, sales_order_id, hdk_items)
 
     # Parse and add standard BOM items
@@ -217,19 +231,25 @@ class AddRackingQuantitiesToSoWorker
     []
   end
 
-  def parse_and_add_item(bom_file, project_id, sales_order_id, search_string:, item_id:, item_name:)
-    items = parse_items_from_bom(bom_file, search_string: search_string, item_name: item_name)
+  def parse_and_add_item(bom_file, project_id, sales_order_id, search_string:, item_id:, item_name:,
+                         match_at_line_start: false)
+    items = parse_items_from_bom(bom_file, search_string: search_string, item_name: item_name,
+                                           match_at_line_start: match_at_line_start)
     add_item_to_so(project_id, sales_order_id, items, item_id: item_id, item_name: item_name) if items.any?
   end
 
-  def parse_items_from_bom(bom_file, search_string:, item_name:)
+  def parse_items_from_bom(bom_file, search_string:, item_name:, match_at_line_start: false)
     items = []
 
     reader = PDF::Reader.new(bom_file.path)
     text = reader.pages.map(&:text).join("\n")
 
     text.each_line do |line|
-      next unless line.include?(search_string)
+      if match_at_line_start
+        next unless line.lstrip.start_with?(search_string)
+      else
+        next unless line.include?(search_string)
+      end
       # Anchor to end of line: qty/EA is the trailing column in a BOM row.
       # Unanchored matching can grab a digit from the description (e.g. the "5"
       # in "ENPHASE IQ COMBINER 5; WITH ENVOY MONITORING") if PDF text
