@@ -249,6 +249,36 @@ RSpec.describe AddRackingQuantitiesToSoWorker, type: :worker do
         expect(result[0][:quantity]).to eq(1)
       end
     end
+
+    context 'when match_at_line_start is true' do
+      let(:mock_pdf_text) do
+        # Mirrors real BOM extraction for project 119977: APKEAC100 appears as a real
+        # row (qty 1), AND inside the description of BR220 (qty 2) and BR230 (qty 1).
+        <<~PDF
+          APKEAC100                             SLC    GENERAC SMART COMBINER; 125A BUS, WITH PWRMICRO GATEWAY                      1         EA
+          BR220                                 SLC    EATON-BR BREAKER; 20A, 2P, 240V, WITH X-IQ-AM1-240-5-HDK OR APKEAC100        2         EA
+          BR230                                 SLC    EATON-BR BREAKER; 30A, 2P, 240V, USE ONLY WITH APKEAC100                     1         EA
+        PDF
+      end
+
+      it 'only matches lines where the search string is the part-number column' do
+        result = worker.send(:parse_items_from_bom, mock_bom_file,
+                            search_string: 'APKEAC100',
+                            item_name: 'PWRMICRO SMART COMBINER',
+                            match_at_line_start: true)
+
+        expect(result.length).to eq(1)
+        expect(result[0]).to include(description: 'PWRMICRO SMART COMBINER', quantity: 1)
+      end
+
+      it 'over-counts without the option (regression guard for the bug being fixed)' do
+        result = worker.send(:parse_items_from_bom, mock_bom_file,
+                            search_string: 'APKEAC100',
+                            item_name: 'PWRMICRO SMART COMBINER')
+
+        expect(result.map { |i| i[:quantity] }).to eq([ 1, 2, 1 ])
+      end
+    end
   end
 
   describe '#item_fulfilled?' do
