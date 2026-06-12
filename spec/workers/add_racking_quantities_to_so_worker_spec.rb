@@ -103,6 +103,7 @@ RSpec.describe AddRackingQuantitiesToSoWorker, type: :worker do
         allow(worker).to receive(:update_racking_quantities)
         allow(worker).to receive(:add_envoy_items_to_so)
         allow(worker).to receive(:handle_combiner_wifi_on_so)
+        allow(worker).to receive(:handle_cell_modem_on_so)
       end
 
       it 'updates racking quantities' do
@@ -120,6 +121,11 @@ RSpec.describe AddRackingQuantitiesToSoWorker, type: :worker do
 
       it 'handles Combiner-WIFI-5 items' do
         expect(worker).to receive(:handle_combiner_wifi_on_so)
+        worker.perform(project_id)
+      end
+
+      it 'handles CELLMODEM-M1 items' do
+        expect(worker).to receive(:handle_cell_modem_on_so)
         worker.perform(project_id)
       end
     end
@@ -486,6 +492,93 @@ RSpec.describe AddRackingQuantitiesToSoWorker, type: :worker do
         end
 
         worker.send(:handle_combiner_wifi_on_so, project_id, sales_order_id, hdk_items)
+      end
+    end
+  end
+
+  describe '#handle_cell_modem_on_so' do
+    let(:sales_order) do
+      {
+        'item' => {
+          'items' => [
+            { 'line' => 1, 'item' => { 'id' => '100' }, 'class' => { 'id' => '10' }, 'location' => { 'id' => '20' } }
+          ]
+        }
+      }
+    end
+
+    before do
+      allow(Netsuite::SalesOrder).to receive(:find).and_return(sales_order)
+      allow(Netsuite::SalesOrder).to receive(:update).and_return({ 'status' => 'success' })
+    end
+
+    context 'when a cell modem is present in the BOM' do
+      let(:cell_modem_items) { [ { quantity: 1, description: 'CELLMODEM-M1' } ] }
+
+      it 'adds CELLMODEM-M1 item' do
+        expect(Netsuite::SalesOrder).to receive(:update) do |_so_id, body|
+          items = body.dig(:item, :items)
+          modem_item = items.find { |i| i.dig(:item, :id) == described_class::CELL_MODEM_ITEM_ID }
+          expect(modem_item).to be_present
+          expect(modem_item[:quantity]).to eq(1)
+
+          { 'status' => 'success' }
+        end
+
+        worker.send(:handle_cell_modem_on_so, project_id, sales_order_id, cell_modem_items)
+      end
+    end
+
+    context 'when no cell modem is in the BOM and one exists on the SO' do
+      let(:cell_modem_items) { [] }
+
+      before do
+        sales_order['item']['items'] << {
+          'line' => 2,
+          'item' => { 'id' => described_class::CELL_MODEM_ITEM_ID },
+          'quantity' => 1,
+          'quantityFulfilled' => 0
+        }
+      end
+
+      it 'removes CELLMODEM-M1 item' do
+        expect(Netsuite::SalesOrder).to receive(:update) do |_so_id, body, options|
+          items = body.dig(:item, :items)
+          modem_item = items.find { |i| i.dig(:item, :id) == described_class::CELL_MODEM_ITEM_ID }
+          expect(modem_item).to be_nil
+          expect(options[:replace_item]).to be true
+
+          { 'status' => 'success' }
+        end
+
+        worker.send(:handle_cell_modem_on_so, project_id, sales_order_id, cell_modem_items)
+      end
+    end
+
+    context 'when no cell modem is in the BOM and the SO line is already fulfilled' do
+      let(:cell_modem_items) { [] }
+
+      before do
+        sales_order['item']['items'] << {
+          'line' => 2,
+          'item' => { 'id' => described_class::CELL_MODEM_ITEM_ID },
+          'quantity' => 1,
+          'quantityFulfilled' => 1
+        }
+      end
+
+      it 'does not remove the fulfilled CELLMODEM-M1 item' do
+        expect(Netsuite::SalesOrder).not_to receive(:update)
+        worker.send(:handle_cell_modem_on_so, project_id, sales_order_id, cell_modem_items)
+      end
+    end
+
+    context 'when no cell modem is in the BOM and none exists on the SO' do
+      let(:cell_modem_items) { [] }
+
+      it 'makes no update' do
+        expect(Netsuite::SalesOrder).not_to receive(:update)
+        worker.send(:handle_cell_modem_on_so, project_id, sales_order_id, cell_modem_items)
       end
     end
   end

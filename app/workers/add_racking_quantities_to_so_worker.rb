@@ -63,6 +63,10 @@ class AddRackingQuantitiesToSoWorker
   PWRMICRO_SMART_COMBINER_ITEM_ID = "928"
   # NetSuite item ID for PWRMICRO PM-820-US 820W DUAL INPUT (APKEPM820)
   PWRMICRO_PM_820_US_ITEM_ID = "929"
+  # NetSuite item ID for CELLMODEM-M1 (Enphase Cell Modem). Added to every
+  # Lightreach Lease SO upstream (proposal-tool) regardless of design, so we
+  # add/remove it here based on whether the BOM actually calls for one.
+  CELL_MODEM_ITEM_ID = "806"
 
   # BOM items to parse and add to SO (standard flow)
   BOM_ITEM_CONFIGS = [
@@ -145,6 +149,13 @@ class AddRackingQuantitiesToSoWorker
                                                        item_name: "X-IQ-AM1-240-5-HDK",
                                                        match_at_line_start: true)
     handle_combiner_wifi_on_so(project_id, sales_order_id, hdk_items)
+
+    # Handle CELLMODEM-M1 (special case: adds/removes based on BOM presence).
+    # proposal-tool adds the cell modem to every Lightreach Lease SO regardless
+    # of design, so we remove it here when the BOM does not list one.
+    cell_modem_items = parse_items_from_bom(bom_data["file"], search_string: "CELLMODEM-M1",
+                                                              item_name: "CELLMODEM-M1")
+    handle_cell_modem_on_so(project_id, sales_order_id, cell_modem_items)
 
     # Parse and add standard BOM items
     BOM_ITEM_CONFIGS.each do |config|
@@ -454,6 +465,68 @@ class AddRackingQuantitiesToSoWorker
     result
   rescue StandardError => e
     log_error(project_id, "Error handling Combiner-WIFI on SO: #{e.message}")
+    nil
+  end
+
+  def handle_cell_modem_on_so(project_id, sales_order_id, cell_modem_items)
+    sales_order = Netsuite::SalesOrder.find(sales_order_id)
+    return log_error(project_id, "Could not fetch Sales Order for CELLMODEM-M1 update") unless sales_order
+
+    items = sales_order.dig("item", "items")&.deep_dup || []
+
+    existing_modem = items.find do |item|
+      item.dig("item", "id").to_s == CELL_MODEM_ITEM_ID
+    end
+
+    if cell_modem_items.any?
+      # Cell modem present in BOM - add or update CELLMODEM-M1
+      total_quantity = cell_modem_items.sum { |item| item[:quantity] }
+      log_progress("Adding/updating CELLMODEM-M1 (qty: #{total_quantity}) on Sales Order #{sales_order_id}")
+
+      if existing_modem
+        # Skip if item has already been fulfilled
+        if item_fulfilled?(existing_modem)
+          log_progress("  CELLMODEM-M1 already fulfilled (line #{existing_modem['line']}, " \
+               "qty fulfilled: #{existing_modem['quantityFulfilled']}), skipping", level: :warning)
+          return
+        end
+        log_progress("  CELLMODEM-M1 already exists on SO line #{existing_modem['line']}, updating qty to #{total_quantity}")
+        existing_modem["quantity"] = total_quantity
+      else
+        new_item = {
+          item: { id: CELL_MODEM_ITEM_ID },
+          quantity: total_quantity,
+          amount: 0
+        }.merge(extract_class_and_location(items))
+        items << new_item
+        log_progress("  Added new line item: CELLMODEM-M1 (qty: #{total_quantity})", level: :success)
+      end
+    elsif existing_modem
+      # Skip removal if item has already been fulfilled
+      if item_fulfilled?(existing_modem)
+        log_progress("  CELLMODEM-M1 already fulfilled (line #{existing_modem['line']}), cannot remove", level: :warning)
+        return
+      end
+      # Cell modem not present in BOM - remove CELLMODEM-M1 if it exists
+      log_progress("Removing CELLMODEM-M1 from Sales Order #{sales_order_id} (no CELLMODEM-M1 in BOM)")
+      items.reject! { |item| item.dig("item", "id").to_s == CELL_MODEM_ITEM_ID }
+    else
+      log_progress("No CELLMODEM-M1 to remove (not present on SO)")
+      return
+    end
+
+    body = {
+      item: {
+        items: items
+      }
+    }
+
+    # Use replace_item: true to ensure items can be removed, not just merged
+    result = Netsuite::SalesOrder.update(sales_order_id, body, replace_item: true)
+    log_progress("  CELLMODEM-M1 updated successfully", level: :success)
+    result
+  rescue StandardError => e
+    log_error(project_id, "Error handling CELLMODEM-M1 on SO: #{e.message}")
     nil
   end
 
