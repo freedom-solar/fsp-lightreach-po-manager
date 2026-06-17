@@ -2,6 +2,25 @@ class PoGenerationService
   CED_DIRECT_PAY_VENDOR_ID = 2_660_586
   CED_VENDOR_ID = 1054
 
+  # Number of attempts (incl. the first) made to write the Sunrise PO link field,
+  # and the base delay (seconds) between attempts (multiplied by the attempt number).
+  PO_LINK_UPDATE_MAX_ATTEMPTS = 3
+  PO_LINK_UPDATE_RETRY_DELAY = 2
+
+  # Raised when the NetSuite PO was created successfully but the follow-up write of the
+  # Sunrise "lightreach_direct_pay_po_link" field failed. This is distinct from a PO
+  # creation failure: the PO already exists, so the caller must NOT regenerate it.
+  class PoLinkUpdateError < StandardError
+    attr_reader :po_id, :po_link, :project_id
+
+    def initialize(message, po_id: nil, po_link: nil, project_id: nil)
+      super(message)
+      @po_id = po_id
+      @po_link = po_link
+      @project_id = project_id
+    end
+  end
+
   attr_reader :job_record
 
   def initialize(job_record)
@@ -115,8 +134,13 @@ class PoGenerationService
       project_id = project["_id"]
       log_progress("Processing project #{index + 1}/#{region_projects.length}: #{project_id}")
 
-      result = create_po(project)
-      created_pos << result if result
+      begin
+        result = create_po(project)
+        created_pos << result if result
+      rescue PoLinkUpdateError => e
+        # PO exists but its Sunrise link write failed — log loudly and keep processing the rest.
+        log_progress(e.message, level: :error)
+      end
     end
 
     log_progress("Successfully created #{created_pos.length} POs for #{region_name}", level: :success)
@@ -163,8 +187,13 @@ class PoGenerationService
       project["job_start"] = job_starts[project_id]
 
       log_progress("Processing project #{index + 1}/#{projects.length}: #{project_id}")
-      po_result = create_po(project)
-      created_pos << po_result if po_result
+      begin
+        po_result = create_po(project)
+        created_pos << po_result if po_result
+      rescue PoLinkUpdateError => e
+        # PO exists but its Sunrise link write failed — log loudly and keep processing the rest.
+        log_progress(e.message, level: :error)
+      end
     end
 
     log_progress("Successfully created #{created_pos.length} POs", level: :success)
@@ -260,6 +289,10 @@ class PoGenerationService
       location_id: so_data[:location_id],
       location_name: location_name_for(so_data[:location_id])
     }
+  rescue PoLinkUpdateError
+    # PO was created but the Sunrise link write failed — surface this loudly rather than
+    # masking it as a creation failure (which would invite a duplicate-PO regenerate).
+    raise
   rescue StandardError => e
     log_progress("Error creating PO for #{project_id}: #{e.message}", level: :error)
     nil
@@ -518,18 +551,25 @@ class PoGenerationService
       po.add_item(id: item[:item_id], quantity: item[:quantity], amount: is_direct_pay ? 0 : nil)
     end
 
-    po_id = po.create
-    log_progress("Created PO '#{po_name}' with ID: #{po_id}", level: :success)
+    po_id =
+      begin
+        po.create
+      rescue StandardError => e
+        log_progress("Failed to create PO '#{po_name}': #{e.message}", level: :error)
+        return nil
+      end
 
-    if po_id
-      po_link = build_po_link(po_id)
-      update_project_po_link(project_id, po_link)
-    end
+    log_progress("Created PO '#{po_name}' with ID: #{po_id}", level: :success)
+    return nil unless po_id
+
+    # NOTE: the PO now exists in NetSuite. A failure past this point must NOT be swallowed
+    # into a nil "creation failed" result, otherwise the project is left showing "No PO" and
+    # a retry would create a duplicate PO. update_project_po_link raises PoLinkUpdateError,
+    # which propagates up so the job is marked failed with an actionable message.
+    po_link = build_po_link(po_id)
+    update_project_po_link(project_id, po_link, po_id: po_id)
 
     po_id
-  rescue StandardError => e
-    log_progress("Failed to create PO '#{po_name}': #{e.message}", level: :error)
-    nil
   end
 
   def build_po_link(po_id)
@@ -538,12 +578,36 @@ class PoGenerationService
     "https://#{account_id}.app.netsuite.com/app/accounting/transactions/purchord.nl?id=#{po_id}"
   end
 
-  def update_project_po_link(project_id, po_link)
+  def update_project_po_link(project_id, po_link, po_id: nil)
     updates = {
       "lightreach_direct_pay_po_link" => po_link,
       "lightreach_direct_pay_po_creation_date" => Time.now.to_i * 1000
     }
-    ProjectSunriseApi.update_project(project_id, updates)
+
+    attempts = 0
+    begin
+      attempts += 1
+      success = ProjectSunriseApi.update_project(project_id, updates)
+      raise "Sunrise returned a non-success response" unless success
+    rescue StandardError => e
+      if attempts < PO_LINK_UPDATE_MAX_ATTEMPTS
+        log_progress(
+          "PO link update attempt #{attempts} failed for #{project_id} (#{e.message}); retrying",
+          level: :warning
+        )
+        sleep(PO_LINK_UPDATE_RETRY_DELAY * attempts)
+        retry
+      end
+      raise PoLinkUpdateError.new(
+        "PO #{po_id} was created in NetSuite but updating the Sunrise PO link for project " \
+        "#{project_id} failed after #{attempts} attempts (#{e.message}). " \
+        "Do NOT regenerate this PO — backfill the PO link instead.",
+        po_id: po_id,
+        po_link: po_link,
+        project_id: project_id
+      )
+    end
+
     log_progress("Updated project #{project_id} with PO link")
   end
 

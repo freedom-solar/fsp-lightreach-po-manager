@@ -785,11 +785,13 @@ RSpec.describe PoGenerationService, type: :service do
     let(:project_id) { 'SF-12345' }
     let(:po_link) { 'https://example.com/po/12345' }
 
+    before { allow(service).to receive(:sleep) }
+
     it 'calls ProjectSunriseApi with correct parameters' do
       expect(ProjectSunriseApi).to receive(:update_project).with(
         project_id,
         hash_including('lightreach_direct_pay_po_link' => po_link)
-      )
+      ).and_return(true)
       service.send(:update_project_po_link, project_id, po_link)
     end
 
@@ -797,14 +799,43 @@ RSpec.describe PoGenerationService, type: :service do
       expect(ProjectSunriseApi).to receive(:update_project).with(
         project_id,
         hash_including('lightreach_direct_pay_po_creation_date')
-      )
+      ).and_return(true)
       service.send(:update_project_po_link, project_id, po_link)
     end
 
     it 'logs progress' do
-      allow(ProjectSunriseApi).to receive(:update_project)
+      allow(ProjectSunriseApi).to receive(:update_project).and_return(true)
       expect(service).to receive(:log_progress).with(/Updated project/)
       service.send(:update_project_po_link, project_id, po_link)
+    end
+
+    it 'retries and succeeds when the first attempt fails' do
+      allow(ProjectSunriseApi).to receive(:update_project).and_return(false, true)
+      expect(service).to receive(:log_progress).with(/attempt 1 failed/, hash_including(level: :warning))
+      expect(service).to receive(:log_progress).with(/Updated project/)
+      service.send(:update_project_po_link, project_id, po_link, po_id: 999)
+    end
+
+    it 'raises PoLinkUpdateError after exhausting retries, carrying the po_id' do
+      allow(ProjectSunriseApi).to receive(:update_project).and_return(false)
+      allow(service).to receive(:log_progress)
+      expect do
+        service.send(:update_project_po_link, project_id, po_link, po_id: 999)
+      end.to raise_error(PoGenerationService::PoLinkUpdateError) do |error|
+        expect(error.po_id).to eq(999)
+        expect(error.project_id).to eq(project_id)
+        expect(error.message).to match(/Do NOT regenerate/)
+      end
+      expect(ProjectSunriseApi).to have_received(:update_project)
+        .exactly(PoGenerationService::PO_LINK_UPDATE_MAX_ATTEMPTS).times
+    end
+
+    it 'raises PoLinkUpdateError when the Sunrise call itself raises' do
+      allow(ProjectSunriseApi).to receive(:update_project).and_raise(StandardError.new("boom"))
+      allow(service).to receive(:log_progress)
+      expect do
+        service.send(:update_project_po_link, project_id, po_link, po_id: 42)
+      end.to raise_error(PoGenerationService::PoLinkUpdateError, /PO 42 was created/)
     end
   end
 
