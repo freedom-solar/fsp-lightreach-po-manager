@@ -790,7 +790,8 @@ RSpec.describe PoGenerationService, type: :service do
     it 'calls ProjectSunriseApi with correct parameters' do
       expect(ProjectSunriseApi).to receive(:update_project).with(
         project_id,
-        hash_including('lightreach_direct_pay_po_link' => po_link)
+        hash_including('lightreach_direct_pay_po_link' => po_link),
+        ignore_hubspot_errors: true
       ).and_return(true)
       service.send(:update_project_po_link, project_id, po_link)
     end
@@ -798,7 +799,15 @@ RSpec.describe PoGenerationService, type: :service do
     it 'includes creation timestamp' do
       expect(ProjectSunriseApi).to receive(:update_project).with(
         project_id,
-        hash_including('lightreach_direct_pay_po_creation_date')
+        hash_including('lightreach_direct_pay_po_creation_date'),
+        ignore_hubspot_errors: true
+      ).and_return(true)
+      service.send(:update_project_po_link, project_id, po_link)
+    end
+
+    it 'passes ignore_hubspot_errors to bypass the deterministic HubSpot sync 400' do
+      expect(ProjectSunriseApi).to receive(:update_project).with(
+        project_id, anything, ignore_hubspot_errors: true
       ).and_return(true)
       service.send(:update_project_po_link, project_id, po_link)
     end
