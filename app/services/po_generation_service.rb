@@ -587,7 +587,12 @@ class PoGenerationService
     attempts = 0
     begin
       attempts += 1
-      success = ProjectSunriseApi.update_project(project_id, updates)
+      # ignore_hubspot_errors: the Sunrise->HubSpot sync rejects this write with a
+      # deterministic 400 ("Property \"\" does not exist") for some projects, which used to
+      # silently leave the PO link unset. HubSpot is not the system of record for the PO
+      # Manager (it reads the Sunrise field), so we persist to Sunrise regardless of the
+      # HubSpot sync result. The retry below still covers genuine transient failures.
+      success = ProjectSunriseApi.update_project(project_id, updates, ignore_hubspot_errors: true)
       raise "Sunrise returned a non-success response" unless success
     rescue StandardError => e
       if attempts < PO_LINK_UPDATE_MAX_ATTEMPTS
