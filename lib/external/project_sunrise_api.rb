@@ -402,8 +402,14 @@ class ProjectSunriseApi
         body = { fields: props }
         body[:customerId] = customer_id if customer_id
         response = HttpVerb.patch(uri, body)
-        puts response.body if response.code&.to_i != 204
-        response.code&.to_i == 204
+        code = response&.code&.to_i
+        if code != 204
+            Rails.logger.error(
+                "ProjectSunriseApi.update_project(#{project_id}) failed: " \
+                "HTTP #{code || 'nil'} - #{response&.body}"
+            )
+        end
+        code == 204
     end
 
     def self.update_filters(project_id)
