@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import Dashboard from './components/Dashboard';
 import LoginPage from './components/LoginPage';
 
-console.log("Lightreach PO Manager loaded");
+console.log("PO Tool loaded");
 
 // Initialize React app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

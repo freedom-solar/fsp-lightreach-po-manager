@@ -97,7 +97,7 @@ export default function Dashboard() {
                 sx={{ height: 36 }}
               />
               <Typography variant="h6" component="div" sx={{ color: '#fff', fontWeight: 500 }}>
-                Lightreach PO Manager
+                PO Tool
               </Typography>
             </Box>
             <Box sx={{ flexGrow: 1 }} />
