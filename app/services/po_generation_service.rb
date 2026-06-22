@@ -1,7 +1,4 @@
 class PoGenerationService
-  CED_DIRECT_PAY_VENDOR_ID = 2_660_586
-  CED_VENDOR_ID = 1054
-
   # Number of attempts (incl. the first) made to write the Sunrise PO link field,
   # and the base delay (seconds) between attempts (multiplied by the attempt number).
   PO_LINK_UPDATE_MAX_ATTEMPTS = 3
@@ -98,16 +95,16 @@ class PoGenerationService
     log_progress("Fetching installations on schedule")
     installations = fetch_installations_on_schedule
 
-    log_progress("Filtering for direct pay projects")
-    direct_pay_projects = filter_for_direct_pay(installations)
+    log_progress("Filtering eligible projects")
+    eligible_projects = filter_eligible_projects(installations)
 
-    log_progress("Found #{direct_pay_projects.length} Lightreach direct pay projects on schedule")
+    log_progress("Found #{eligible_projects.length} eligible projects on schedule")
 
     # Pre-filter projects by region
     log_progress("Filtering projects for #{region_name} region")
     region_projects = []
 
-    direct_pay_projects.each do |project|
+    eligible_projects.each do |project|
       project_id = project["_id"]
       so_data = fetch_sales_order_data(project_id)
       location_name = location_name_for(so_data&.dig(:location_id))
@@ -214,7 +211,8 @@ class PoGenerationService
     lightreach_account_id = project.dig("fields", "loan_application_id")
     job_start = project["job_start"]
     existing_po_link = project.dig("fields", "lightreach_direct_pay_po_link")
-    is_direct_pay = direct_pay?(project)
+    program = ProgramType.for(project)
+    is_direct_pay = program[:zero_priced]
 
     # Skip if Crew Installation Complete is already done
     system_size = project.dig("fields", "system_size")
@@ -228,7 +226,7 @@ class PoGenerationService
     # Check if project already has a PO
     if existing_po_link.present?
       log_progress("Project #{project_id} has existing PO link")
-      return use_existing_po(project_id, project_name, lightreach_account_id, job_start, customer_phone, customer_email, existing_po_link)
+      return use_existing_po(project_id, project_name, lightreach_account_id, job_start, customer_phone, customer_email, existing_po_link, program)
     end
 
     log_progress("Creating new PO for #{project_id} (direct_pay: #{is_direct_pay})")
@@ -254,16 +252,10 @@ class PoGenerationService
 
     log_progress("Found #{po_items.length} eligible items for PO")
 
-    # Determine vendor based on direct pay status
-    if is_direct_pay
-      vendor_id = CED_DIRECT_PAY_VENDOR_ID
-      vendor_name = "CED - Direct Pay"
-      po_name = "#{project_id} - Lightreach CED Direct Pay"
-    else
-      vendor_id = CED_VENDOR_ID
-      vendor_name = "CED"
-      po_name = "#{project_id} - CED Kitted Job"
-    end
+    # Determine vendor and PO naming from the project's program
+    vendor_id = program[:vendor_id]
+    vendor_name = program[:vendor_name]
+    po_name = "#{project_id} - #{program[:po_name_suffix]}"
 
     # Submit PO to NetSuite
     log_progress("Submitting PO to NetSuite for #{project_id}")
@@ -287,7 +279,9 @@ class PoGenerationService
       customer_phone: customer_phone,
       customer_email: customer_email,
       location_id: so_data[:location_id],
-      location_name: location_name_for(so_data[:location_id])
+      location_name: location_name_for(so_data[:location_id]),
+      program_key: program[:key],
+      program_label: program[:label]
     }
   rescue PoLinkUpdateError
     # PO was created but the Sunrise link write failed — surface this loudly rather than
@@ -299,7 +293,7 @@ class PoGenerationService
   end
 
   # Use existing PO (verify it exists and hasn't been received)
-  def use_existing_po(project_id, project_name, lightreach_account_id, job_start, customer_phone, customer_email, po_link)
+  def use_existing_po(project_id, project_name, lightreach_account_id, job_start, customer_phone, customer_email, po_link, program = ProgramType::DIRECT_PAY)
     po_id = extract_po_id_from_link(po_link)
     unless po_id
       log_progress("Could not extract PO ID from link for #{project_id}", level: :error)
@@ -338,7 +332,7 @@ class PoGenerationService
       project_id: project_id,
       project_name: project_name,
       po_id: po_id,
-      po_name: purchase_order["tranId"] || "#{project_id} - Lightreach CED Direct Pay",
+      po_name: purchase_order["tranId"] || "#{project_id} - #{program[:po_name_suffix]}",
       po_items: po_items,
       lightreach_account_id: lightreach_account_id,
       job_start: job_start,
@@ -346,7 +340,9 @@ class PoGenerationService
       customer_email: customer_email,
       location_id: location_id,
       location_name: location_name_for(location_id),
-      existing_po: true
+      existing_po: true,
+      program_key: program[:key],
+      program_label: program[:label]
     }
   rescue StandardError => e
     log_progress("Error using existing PO for #{project_id}: #{e.message}", level: :error)
@@ -377,7 +373,7 @@ class PoGenerationService
     job_starts
   end
 
-  def filter_for_direct_pay(jobs)
+  def filter_eligible_projects(jobs)
     # Build mapping of project_id to job start date
     job_start_by_project = {}
     jobs.each do |job|
@@ -404,8 +400,8 @@ class PoGenerationService
       "fields.system_size"
     ]
     result = ProjectSunriseApi.get_projects_bulk(project_ids, fields: fields)
-    projects = result["items"] || []
-    filtered = projects.select { |project| direct_pay?(project) }
+    # All scheduled installs are eligible; program classification happens in create_po.
+    filtered = result["items"] || []
 
     # Exclude projects where Crew Installation Complete is done
     filtered_ids = filtered.map { |p| p["_id"] }
@@ -433,7 +429,7 @@ class PoGenerationService
   end
 
   def direct_pay?(project)
-    project.dig("fields", "lender") == "Lightreach Lease"
+    ProgramType.direct_pay?(project)
   end
 
   # Extract phone and email from primary customer
@@ -534,7 +530,8 @@ class PoGenerationService
   end
 
   def submit_po_to_netsuite(project_id, _project_name, po_name, po_items, so_data,
-                            vendor_id: CED_DIRECT_PAY_VENDOR_ID, vendor_name: "CED - Direct Pay",
+                            vendor_id: ProgramType::DIRECT_PAY[:vendor_id],
+                            vendor_name: ProgramType::DIRECT_PAY[:vendor_name],
                             is_direct_pay: true)
     po = Netsuite::PurchaseOrder.new(
       vendor: vendor_id,
@@ -742,7 +739,7 @@ class PoGenerationService
 
   public
 
-  def generate_location_summary_pdf(location_pos, location_name)
+  def generate_location_summary_pdf(location_pos, location_name, program = ProgramType::DIRECT_PAY)
     require "prawn"
     require "prawn/table"
 
@@ -750,7 +747,7 @@ class PoGenerationService
 
     Prawn::Document.new do |pdf|
       pdf.font_size 20
-      pdf.text "Lightreach Direct Pay - #{location_name} Summary", style: :bold
+      pdf.text "#{program[:label]} - #{location_name} Summary", style: :bold
       pdf.move_down 10
 
       pdf.font_size 10

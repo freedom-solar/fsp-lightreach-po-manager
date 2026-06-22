@@ -44,7 +44,7 @@ RSpec.describe "API V1 Material Return", type: :request do
     end
 
     it "sends material return request" do
-      expect(Lightreach::DirectPayMailer).to receive(:material_return_requested)
+      expect(PoMailer).to receive(:material_return_requested)
         .with(hash_including(
           project_data: hash_including(
             project_id: project_id,

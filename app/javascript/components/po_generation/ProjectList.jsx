@@ -155,6 +155,7 @@ export default function ProjectList({ projects, onGenerateSingle, selectedProjec
             </TableCell>
             <TableCell>Project ID</TableCell>
             <TableCell>Project Name</TableCell>
+            <TableCell>Program</TableCell>
             <TableCell>Loan App ID</TableCell>
             <TableCell>System Size</TableCell>
             <TableCell>Job Start</TableCell>
@@ -182,6 +183,14 @@ export default function ProjectList({ projects, onGenerateSingle, selectedProjec
                 </Link>
               </TableCell>
               <TableCell>{project.name}</TableCell>
+              <TableCell>
+                <Chip
+                  label={project.program_label || 'Unknown'}
+                  color={project.program_type === 'direct_pay' ? 'primary' : 'secondary'}
+                  size="small"
+                  variant="outlined"
+                />
+              </TableCell>
               <TableCell>
                 {project.loan_application_id ? (
                   <Link

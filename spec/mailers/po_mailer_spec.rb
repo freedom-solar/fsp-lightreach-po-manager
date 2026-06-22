@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe Lightreach::DirectPayMailer, type: :mailer do
+RSpec.describe PoMailer, type: :mailer do
   let(:mock_pdf_binary) { "PDF_BINARY_CONTENT" }
 
   describe '#regional_pos_created' do
@@ -105,6 +105,34 @@ RSpec.describe Lightreach::DirectPayMailer, type: :mailer do
         expect(mail.body.encoded).to include('Austin Project 2')
         expect(mail.body.encoded).to include('SF-001')
         expect(mail.body.encoded).to include('SF-002')
+      end
+    end
+
+    context 'for a CED Kitted Job program' do
+      let(:mail) do
+        described_class.regional_pos_created(
+          region: region,
+          created_pos: created_pos,
+          po_pdfs: po_pdfs,
+          summary_pdf: summary_pdf,
+          program: ProgramType::CED_KITTED,
+          test_mode: false
+        )
+      end
+
+      it 'brands the subject as CED Kitted Job, not Lightreach Direct Pay' do
+        expect(mail.subject).to eq('CED Kitted Job - Austin - 2 Purchase Orders Created')
+        expect(mail.subject).not_to include('Lightreach')
+      end
+
+      it 'brands the summary attachment filename' do
+        attachment = mail.attachments.find { |a| a.filename == 'CED_Kitted_Job_Austin_Summary.pdf' }
+        expect(attachment).to be_present
+      end
+
+      it 'brands the email body header' do
+        expect(mail.body.encoded).to include('CED Kitted Job Purchase Orders Created')
+        expect(mail.body.encoded).not_to include('Lightreach Direct Pay')
       end
     end
 
@@ -279,6 +307,15 @@ RSpec.describe Lightreach::DirectPayMailer, type: :mailer do
 
       it 'renders the subject' do
         expect(mail.subject).to eq('Lightreach Direct Pay PO Created - Project SF-001')
+      end
+
+      it 'brands the subject for a CED Kitted Job program_key' do
+        ced_mail = described_class.single_po_created(
+          po_data: po_data.merge(program_key: :ced_kitted),
+          pdf_binary: mock_pdf_binary,
+          cc_email: nil
+        )
+        expect(ced_mail.subject).to eq('CED Kitted Job PO Created - Project SF-001')
       end
 
       it 'sends to regional recipients' do
