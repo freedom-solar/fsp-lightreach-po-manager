@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+#
+# Pre-push hook: refuse to push to a branch whose pull request has already been
+# merged. After a squash/merge, the source branch still exists locally and on the
+# remote; pushing more commits to it silently strands them outside main. This hook
+# catches that mistake.
+#
+# Bypass intentionally with:  ALLOW_PUSH_TO_MERGED=1 git push
+#
+# Requires the GitHub CLI (gh). If gh is missing or a lookup fails, the hook warns
+# and allows the push rather than blocking legitimate work.
+
+set -euo pipefail
+
+if [[ "${ALLOW_PUSH_TO_MERGED:-}" == "1" ]]; then
+  exit 0
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "pre-push: gh (GitHub CLI) not found; skipping merged-PR check." >&2
+  exit 0
+fi
+
+zero_sha="0000000000000000000000000000000000000000"
+blocked=0
+
+# stdin lines: <local ref> <local sha> <remote ref> <remote sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Skip branch deletions (local sha is all zeros).
+  [[ "$local_sha" == "$zero_sha" ]] && continue
+
+  # Only care about pushes to branch refs.
+  [[ "$remote_ref" == refs/heads/* ]] || continue
+  branch="${remote_ref#refs/heads/}"
+
+  # Never block the trunk.
+  if [[ "$branch" == "main" || "$branch" == "master" ]]; then
+    continue
+  fi
+
+  merged_pr=""
+  if ! merged_pr="$(gh pr list --head "$branch" --state merged --json number \
+      --jq '.[0].number' 2>/dev/null)"; then
+    echo "pre-push: could not query GitHub for branch '$branch'; allowing push." >&2
+    continue
+  fi
+
+  if [[ -n "$merged_pr" ]]; then
+    echo "" >&2
+    echo "  ✗ Refusing to push: branch '$branch' already has a MERGED pull request (#$merged_pr)." >&2
+    echo "    Pushing more commits here strands them outside main." >&2
+    echo "    Create a new branch off main for follow-up work:" >&2
+    echo "        git checkout -b <new-branch> origin/main && git cherry-pick <sha>" >&2
+    echo "" >&2
+    echo "    To override (rarely needed):  ALLOW_PUSH_TO_MERGED=1 git push" >&2
+    echo "" >&2
+    blocked=1
+  fi
+done
+
+exit "$blocked"
