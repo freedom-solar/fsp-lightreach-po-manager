@@ -73,7 +73,7 @@ export default function LoginPage() {
               sx={{ width: 280, mb: 2 }}
             />
             <Typography variant="h5" component="h1" gutterBottom>
-              Lightreach PO Manager
+              PO Tool
             </Typography>
 
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }} align="center">
