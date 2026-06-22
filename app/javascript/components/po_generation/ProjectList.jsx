@@ -186,12 +186,17 @@ export default function ProjectList({ projects, onGenerateSingle, selectedProjec
               <TableCell>
                 <Chip
                   label={project.program_label || 'Unknown'}
-                  color={project.program_type === 'direct_pay' ? 'success' : 'default'}
                   size="small"
+                  sx={{
+                    fontWeight: 600,
+                    color: '#fff',
+                    backgroundColor:
+                      project.program_type === 'direct_pay' ? '#2e7d32' : '#ed6c02',
+                  }}
                 />
               </TableCell>
               <TableCell>
-                {project.loan_application_id ? (
+                {project.program_type === 'direct_pay' && project.loan_application_id ? (
                   <Link
                     href={`https://palmetto.finance/accounts/${project.loan_application_id}`}
                     target="_blank"
