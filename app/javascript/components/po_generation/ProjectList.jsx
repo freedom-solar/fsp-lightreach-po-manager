@@ -186,9 +186,8 @@ export default function ProjectList({ projects, onGenerateSingle, selectedProjec
               <TableCell>
                 <Chip
                   label={project.program_label || 'Unknown'}
-                  color={project.program_type === 'direct_pay' ? 'primary' : 'secondary'}
+                  color={project.program_type === 'direct_pay' ? 'success' : 'default'}
                   size="small"
-                  variant="outlined"
                 />
               </TableCell>
               <TableCell>

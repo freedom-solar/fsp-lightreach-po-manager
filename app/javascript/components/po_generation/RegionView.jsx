@@ -7,6 +7,8 @@ import {
   Typography,
   Paper,
   Snackbar,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ProjectList from './ProjectList';
@@ -18,6 +20,7 @@ import ManualReturnMaterialInput from './ManualReturnMaterialInput';
 export default function RegionView({ region }) {
   const [projects, setProjects] = useState([]);
   const [selectedProjects, setSelectedProjects] = useState([]);
+  const [programFilter, setProgramFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeJobId, setActiveJobId] = useState(null);
@@ -40,7 +43,8 @@ export default function RegionView({ region }) {
       if (data.success) {
         const fetchedProjects = data.data.projects;
         setProjects(fetchedProjects);
-        // Select all projects by default
+        // Reset to the unfiltered view and select all projects by default
+        setProgramFilter('all');
         setSelectedProjects(fetchedProjects.map(p => p.id));
       } else {
         setError(data.error || 'Failed to fetch projects');
@@ -100,6 +104,18 @@ export default function RegionView({ region }) {
     }
   };
 
+  const handleProgramFilterChange = (event, newFilter) => {
+    // ToggleButtonGroup passes null when the active button is re-clicked; ignore it.
+    if (newFilter === null) return;
+    setProgramFilter(newFilter);
+    // Keep the selection in sync with what's visible so "Generate All" only acts on
+    // the filtered program.
+    const visible = newFilter === 'all'
+      ? projects
+      : projects.filter(p => p.program_type === newFilter);
+    setSelectedProjects(visible.map(p => p.id));
+  };
+
   const handleGenerateSingle = async (projectId, options = {}) => {
     const { skipEmail = false } = options;
 
@@ -150,6 +166,12 @@ export default function RegionView({ region }) {
     );
   }
 
+  const directPayCount = projects.filter(p => p.program_type === 'direct_pay').length;
+  const cedKittedCount = projects.filter(p => p.program_type === 'ced_kitted').length;
+  const visibleProjects = programFilter === 'all'
+    ? projects
+    : projects.filter(p => p.program_type === programFilter);
+
   return (
     <Box>
       {error && (
@@ -165,10 +187,15 @@ export default function RegionView({ region }) {
         />
       ) : (
         <>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, gap: 3 }}>
-            <Typography variant="h5">
-              {region} - {projects.length} Projects on Schedule ({selectedProjects.length} selected)
-            </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 3 }}>
+            <Box>
+              <Typography variant="h5">
+                {region} - {projects.length} Projects on Schedule ({selectedProjects.length} selected)
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {directPayCount} Lightreach Direct Pay · {cedKittedCount} CED Kitted Job
+              </Typography>
+            </Box>
             <Button
               variant="contained"
               color="primary"
@@ -180,8 +207,20 @@ export default function RegionView({ region }) {
             </Button>
           </Box>
 
+          <ToggleButtonGroup
+            value={programFilter}
+            exclusive
+            onChange={handleProgramFilterChange}
+            size="small"
+            sx={{ mb: 2 }}
+          >
+            <ToggleButton value="all">All ({projects.length})</ToggleButton>
+            <ToggleButton value="direct_pay">Lightreach Direct Pay ({directPayCount})</ToggleButton>
+            <ToggleButton value="ced_kitted">CED Kitted Job ({cedKittedCount})</ToggleButton>
+          </ToggleButtonGroup>
+
           <ProjectList
-            projects={projects}
+            projects={visibleProjects}
             selectedProjects={selectedProjects}
             onToggleProject={handleToggleProject}
             onToggleAll={handleToggleAll}
