@@ -25,7 +25,7 @@ RSpec.describe MaterialReturnService do
     end
 
     it "sends material return email" do
-      expect(Lightreach::DirectPayMailer).to receive(:material_return_requested)
+      expect(PoMailer).to receive(:material_return_requested)
         .with(
           project_data: project_data,
           return_message: message,

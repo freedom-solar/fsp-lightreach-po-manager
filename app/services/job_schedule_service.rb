@@ -1,17 +1,17 @@
 class JobScheduleService
-  def fetch_direct_pay_on_schedule(region: nil)
+  def fetch_jobs_on_schedule(region: nil)
     installations = fetch_installations_on_schedule
     Rails.logger.info "[JobScheduleService] Found #{installations.length} installations on schedule"
 
-    direct_pay_projects = filter_for_direct_pay(installations)
-    Rails.logger.info "[JobScheduleService] Found #{direct_pay_projects.length} direct pay projects"
+    scheduled_projects = fetch_scheduled_projects(installations)
+    Rails.logger.info "[JobScheduleService] Found #{scheduled_projects.length} scheduled projects"
 
     if region
       # Batch fetch all sales orders to avoid N+1 queries
-      project_ids = direct_pay_projects.map { |p| p["_id"] }
+      project_ids = scheduled_projects.map { |p| p["_id"] }
       location_map = batch_fetch_project_locations(project_ids)
 
-      filtered = direct_pay_projects.select do |project|
+      filtered = scheduled_projects.select do |project|
         location_name = location_map[project["_id"]]
         Rails.logger.info "[JobScheduleService] Project #{project['_id']}: location_name=#{location_name}, target_region=#{region}, match=#{location_name == region}"
         location_name == region
@@ -20,7 +20,7 @@ class JobScheduleService
       Rails.logger.info "[JobScheduleService] Found #{filtered.length} projects for region: #{region}"
       filtered
     else
-      direct_pay_projects
+      scheduled_projects
     end
   end
 
@@ -37,7 +37,7 @@ class JobScheduleService
     installation_jobs + powerwall_jobs
   end
 
-  def filter_for_direct_pay(jobs)
+  def fetch_scheduled_projects(jobs)
     # Build mapping of project_id to job start date
     job_start_by_project = {}
     jobs.each do |job|
@@ -66,17 +66,13 @@ class JobScheduleService
     result = ProjectSunriseApi.get_projects_bulk(project_ids, fields: fields)
     projects = result["items"] || []
 
-    # Filter for Lightreach direct pay projects
-    filtered = projects.select do |project|
-      project.dig("fields", "lender") == "Lightreach Lease"
-    end
-
-    # Add job start date to each project
-    filtered.each do |project|
+    # Add job start date to each project (all scheduled installs are returned;
+    # program classification happens downstream via ProgramType).
+    projects.each do |project|
       project["job_start"] = job_start_by_project[project["_id"]]
     end
 
-    filtered
+    projects
   end
 
   def batch_fetch_project_locations(project_ids)

@@ -10,16 +10,19 @@ module Api
         end
 
         service = JobScheduleService.new
-        projects = service.fetch_direct_pay_on_schedule(region: region)
+        projects = service.fetch_jobs_on_schedule(region: region)
 
         # Transform projects into frontend-friendly format
         formatted_projects = projects.map do |project|
+          program = ProgramType.for(project)
           {
             id: project["_id"],
             name: project["name"],
             loan_application_id: project.dig("fields", "loan_application_id"),
             system_size: project.dig("fields", "system_size"),
             lender: project.dig("fields", "lender"),
+            program_type: program[:key],
+            program_label: program[:label],
             job_start: project["job_start"],
             po_link: project.dig("fields", "lightreach_direct_pay_po_link"),
             has_po: project.dig("fields", "lightreach_direct_pay_po_link").present?
@@ -57,12 +60,15 @@ module Api
           return render_error("Project not found", status: :not_found)
         end
 
+        program = ProgramType.for(project)
         formatted_project = {
           id: project["_id"],
           name: project["name"],
           loan_application_id: project.dig("fields", "loan_application_id"),
           system_size: project.dig("fields", "system_size"),
           lender: project.dig("fields", "lender"),
+          program_type: program[:key],
+          program_label: program[:label],
           market_region: project.dig("fields", "market_region"),
           po_link: project.dig("fields", "lightreach_direct_pay_po_link"),
           has_po: project.dig("fields", "lightreach_direct_pay_po_link").present?

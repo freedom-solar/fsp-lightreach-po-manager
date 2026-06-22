@@ -28,7 +28,7 @@ RSpec.describe 'API V1 Projects', type: :request do
     before do
       job_schedule_service = instance_double(JobScheduleService)
       allow(JobScheduleService).to receive(:new).and_return(job_schedule_service)
-      allow(job_schedule_service).to receive(:fetch_direct_pay_on_schedule).and_return(projects_data)
+      allow(job_schedule_service).to receive(:fetch_jobs_on_schedule).and_return(projects_data)
     end
 
     it 'returns projects for the region' do
@@ -59,7 +59,7 @@ RSpec.describe 'API V1 Projects', type: :request do
       before do
         job_schedule_service = instance_double(JobScheduleService)
         allow(JobScheduleService).to receive(:new).and_return(job_schedule_service)
-        allow(job_schedule_service).to receive(:fetch_direct_pay_on_schedule).and_raise(StandardError, 'API Error')
+        allow(job_schedule_service).to receive(:fetch_jobs_on_schedule).and_raise(StandardError, 'API Error')
       end
 
       it 'returns internal server error' do

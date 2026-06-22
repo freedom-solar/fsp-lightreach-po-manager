@@ -5,7 +5,7 @@ RSpec.describe JobScheduleService do
   let(:start_time) { Time.now.beginning_of_day }
   let(:end_time) { (Time.now + 1.week).end_of_week }
 
-  describe '#fetch_direct_pay_on_schedule' do
+  describe '#fetch_jobs_on_schedule' do
     let(:installation_jobs) do
       [
         {
@@ -56,13 +56,13 @@ RSpec.describe JobScheduleService do
 
     context 'without region filter' do
       it 'returns all direct pay projects' do
-        result = service.fetch_direct_pay_on_schedule
+        result = service.fetch_jobs_on_schedule
         expect(result.length).to eq(2)
         expect(result.map { |p| p['_id'] }).to contain_exactly('SF-001', 'SF-002')
       end
 
       it 'adds job start dates to projects' do
-        result = service.fetch_direct_pay_on_schedule
+        result = service.fetch_jobs_on_schedule
         project = result.find { |p| p['_id'] == 'SF-001' }
         expect(project['job_start']).to eq('2025-03-15T10:00:00Z')
       end
@@ -77,7 +77,7 @@ RSpec.describe JobScheduleService do
       end
 
       it 'returns only projects in specified region' do
-        result = service.fetch_direct_pay_on_schedule(region: 'Austin')
+        result = service.fetch_jobs_on_schedule(region: 'Austin')
         expect(result.length).to eq(1)
         expect(result.first['_id']).to eq('SF-001')
       end
@@ -88,7 +88,7 @@ RSpec.describe JobScheduleService do
           'SF-002' => 'Houston'
         })
 
-        result = service.fetch_direct_pay_on_schedule(region: 'Austin')
+        result = service.fetch_jobs_on_schedule(region: 'Austin')
         expect(result).to be_empty
       end
     end
@@ -270,7 +270,7 @@ RSpec.describe JobScheduleService do
     end
   end
 
-  describe '#filter_for_direct_pay' do
+  describe '#fetch_scheduled_projects' do
     let(:jobs) do
       [
         {
@@ -321,20 +321,20 @@ RSpec.describe JobScheduleService do
       allow(ProjectSunriseApi).to receive(:get_projects_bulk).and_return(projects_response)
     end
 
-    it 'filters for Lightreach Lease projects only' do
-      result = service.send(:filter_for_direct_pay, jobs)
-      expect(result.length).to eq(1)
-      expect(result.first['_id']).to eq('SF-001')
+    it 'returns all scheduled projects regardless of lender' do
+      result = service.send(:fetch_scheduled_projects, jobs)
+      expect(result.length).to eq(2)
+      expect(result.map { |p| p['_id'] }).to contain_exactly('SF-001', 'SF-002')
     end
 
     it 'adds job start date to projects' do
-      result = service.send(:filter_for_direct_pay, jobs)
+      result = service.send(:fetch_scheduled_projects, jobs)
       expect(result.first['job_start']).to eq('2025-03-15T10:00:00Z')
     end
 
     it 'uses earliest start date for duplicate projects' do
       projects_response['items'][1]['fields']['lender'] = 'Lightreach Lease'
-      result = service.send(:filter_for_direct_pay, jobs)
+      result = service.send(:fetch_scheduled_projects, jobs)
 
       project = result.find { |p| p['_id'] == 'SF-002' }
       expect(project['job_start']).to eq('2025-03-18T10:00:00Z')
@@ -342,11 +342,11 @@ RSpec.describe JobScheduleService do
 
     it 'handles jobs without project IDs' do
       jobs_with_nil = jobs + [ { 'node' => { 'Start' => '2025-03-15T10:00:00Z' } } ]
-      expect { service.send(:filter_for_direct_pay, jobs_with_nil) }.not_to raise_error
+      expect { service.send(:fetch_scheduled_projects, jobs_with_nil) }.not_to raise_error
     end
 
     it 'returns empty array when no project IDs' do
-      result = service.send(:filter_for_direct_pay, [])
+      result = service.send(:fetch_scheduled_projects, [])
       expect(result).to eq([])
     end
   end

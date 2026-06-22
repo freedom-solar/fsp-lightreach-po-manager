@@ -26,25 +26,28 @@ class EmailNotificationService
       }
     end
 
-    # Group POs by region (location_name) and send one email per region
-    pos_by_region = po_results.group_by { |po| po[:location_name] }
+    # Group POs by region (location_name) AND program so each email is branded for the
+    # actual job type — a region batch can now contain mixed programs.
+    pos_by_group = po_results.group_by { |po| [ po[:location_name], po[:program_key] ] }
 
-    pos_by_region.each do |region, region_pos|
-      region_po_pdfs = region_pos.map { |po| po_pdfs_by_id[po[:po_id]] }
-      region_summary_pdf = @po_generation_service.generate_location_summary_pdf(region_pos, region)
+    pos_by_group.each do |(region, program_key), group_pos|
+      program = ProgramType.for_key(program_key)
+      group_po_pdfs = group_pos.map { |po| po_pdfs_by_id[po[:po_id]] }
+      group_summary_pdf = @po_generation_service.generate_location_summary_pdf(group_pos, region, program)
 
-      Lightreach::DirectPayMailer.regional_pos_created(
+      PoMailer.regional_pos_created(
         region: region,
-        created_pos: region_pos,
-        po_pdfs: region_po_pdfs,
-        summary_pdf: region_summary_pdf,
+        created_pos: group_pos,
+        po_pdfs: group_po_pdfs,
+        summary_pdf: group_summary_pdf,
+        program: program,
         test_mode: test_mode
       ).send_google
 
-      Rails.logger.info "Sent PO email for region #{region} with #{region_pos.length} projects"
+      Rails.logger.info "Sent #{program[:label]} PO email for region #{region} with #{group_pos.length} projects"
     end
 
-    Rails.logger.info "Sent #{pos_by_region.keys.length} regional PO emails for #{po_results.length} total projects"
+    Rails.logger.info "Sent #{pos_by_group.keys.length} regional PO emails for #{po_results.length} total projects"
   rescue StandardError => e
     Rails.logger.error "Failed to send batch PO email: #{e.message}"
     raise
@@ -58,7 +61,7 @@ class EmailNotificationService
     @po_generation_service.upload_po_to_lightreach(po_result, pdf_binary) if po_result[:lightreach_account_id].present?
 
     # Send email with CC
-    Lightreach::DirectPayMailer.single_po_created(
+    PoMailer.single_po_created(
       po_data: po_result,
       pdf_binary: pdf_binary,
       cc_email: cc_email

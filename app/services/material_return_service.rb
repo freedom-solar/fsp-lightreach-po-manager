@@ -1,6 +1,6 @@
 class MaterialReturnService
   def send_return_request(project_data:, message:, requester_email:)
-    Lightreach::DirectPayMailer.material_return_requested(
+    PoMailer.material_return_requested(
       project_data: project_data,
       return_message: message,
       requester_email: requester_email

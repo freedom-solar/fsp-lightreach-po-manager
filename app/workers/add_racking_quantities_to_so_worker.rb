@@ -170,9 +170,12 @@ class AddRackingQuantitiesToSoWorker
 
   private
 
-  # Broadcast log message via ActionCable (if job_id is provided) and to console
+  # Maps the worker's progress levels to Rails logger severities.
+  LOGGER_SEVERITIES = { info: :info, success: :info, warning: :warn, error: :error }.freeze
+
+  # Broadcast log message via ActionCable (if job_id is provided) and to the Rails log.
   def log_progress(message, level: :info)
-    puts message
+    Rails.logger.public_send(LOGGER_SEVERITIES.fetch(level, :info), message)
 
     return unless @job_id
 
@@ -200,7 +203,7 @@ class AddRackingQuantitiesToSoWorker
       )
     end
   rescue StandardError => e
-    puts "Warning: Failed to log progress: #{e.message}"
+    Rails.logger.warn("Failed to log progress: #{e.message}")
   end
 
   def fetch_bom_file(project_id)
@@ -238,7 +241,7 @@ class AddRackingQuantitiesToSoWorker
 
     racking_items
   rescue StandardError => e
-    puts "Error parsing BOM PDF: #{e.message}"
+    Rails.logger.error("Error parsing BOM PDF: #{e.message}")
     []
   end
 
@@ -282,7 +285,7 @@ class AddRackingQuantitiesToSoWorker
 
     items
   rescue StandardError => e
-    puts "Error parsing BOM PDF for #{item_name} items: #{e.message}"
+    Rails.logger.error("Error parsing BOM PDF for #{item_name} items: #{e.message}")
     []
   end
 
@@ -536,7 +539,7 @@ class AddRackingQuantitiesToSoWorker
     sales_order = Netsuite::SalesOrder.find_external(external_id)
     sales_order["id"]&.to_i
   rescue StandardError => e
-    puts "Error fetching sales order ID: #{e.message}"
+    Rails.logger.error("Error fetching sales order ID: #{e.message}")
     nil
   end
 
@@ -822,7 +825,7 @@ class AddRackingQuantitiesToSoWorker
   end
 
   def log_error(project_id, message)
-    puts "ERROR [Project #{project_id}]: #{message}"
+    Rails.logger.error("ERROR [Project #{project_id}]: #{message}")
     nil
   end
 end

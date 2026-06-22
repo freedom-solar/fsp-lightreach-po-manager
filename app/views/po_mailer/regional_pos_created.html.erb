@@ -1,4 +1,4 @@
-<h2>Lightreach Direct Pay Purchase Orders Created - <%= @region %></h2>
+<h2><%= @program[:label] %> Purchase Orders Created - <%= @region %></h2>
 
 <p><strong>Region:</strong> <%= @region %></p>
 <p><strong>Total Projects:</strong> <%= @total_projects %></p>
@@ -47,7 +47,7 @@
 
 <h4>Region Summary PDF</h4>
 <ul>
-  <li><strong>Lightreach_Direct_Pay_<%= @region.gsub(' ', '_') %>_Summary.pdf</strong> - Aggregated summary for <%= @region %> (<%= @total_projects %> projects)</li>
+  <li><strong><%= @program[:filename_slug] %>_<%= @region.gsub(' ', '_') %>_Summary.pdf</strong> - Aggregated summary for <%= @region %> (<%= @total_projects %> projects)</li>
 </ul>
 
 <h4>Individual PO PDFs</h4>

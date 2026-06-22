@@ -39,7 +39,7 @@ RSpec.describe Api::V1::ProjectsController, type: :controller do
     before do
       job_schedule_service = instance_double(JobScheduleService)
       allow(JobScheduleService).to receive(:new).and_return(job_schedule_service)
-      allow(job_schedule_service).to receive(:fetch_direct_pay_on_schedule).and_return(projects_data)
+      allow(job_schedule_service).to receive(:fetch_jobs_on_schedule).and_return(projects_data)
     end
 
     it 'returns success response' do
@@ -78,7 +78,7 @@ RSpec.describe Api::V1::ProjectsController, type: :controller do
       before do
         job_schedule_service = instance_double(JobScheduleService)
         allow(JobScheduleService).to receive(:new).and_return(job_schedule_service)
-        allow(job_schedule_service).to receive(:fetch_direct_pay_on_schedule).and_raise(StandardError, 'API Error')
+        allow(job_schedule_service).to receive(:fetch_jobs_on_schedule).and_raise(StandardError, 'API Error')
       end
 
       it 'returns error response' do

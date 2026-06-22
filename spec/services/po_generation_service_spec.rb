@@ -885,7 +885,7 @@ RSpec.describe PoGenerationService, type: :service do
 
     before do
       allow(service).to receive(:fetch_installations_on_schedule).and_return(installations)
-      allow(service).to receive(:filter_for_direct_pay).and_return(direct_pay_projects)
+      allow(service).to receive(:filter_eligible_projects).and_return(direct_pay_projects)
       allow(service).to receive(:create_po).and_return({ po_id: 12345 })
       allow(service).to receive(:fetch_sales_order_data).and_return({ location_id: 1 })  # Austin location ID
       allow(service).to receive(:update_project_po_link)
@@ -899,7 +899,7 @@ RSpec.describe PoGenerationService, type: :service do
     end
 
     it 'filters for direct pay projects' do
-      expect(service).to receive(:filter_for_direct_pay).with(installations)
+      expect(service).to receive(:filter_eligible_projects).with(installations)
       service.generate_pos_for_region(region_name)
     end
 
@@ -933,7 +933,7 @@ RSpec.describe PoGenerationService, type: :service do
 
     context 'when no direct pay projects found' do
       before do
-        allow(service).to receive(:filter_for_direct_pay).and_return([])
+        allow(service).to receive(:filter_eligible_projects).and_return([])
       end
 
       it 'returns empty array' do
