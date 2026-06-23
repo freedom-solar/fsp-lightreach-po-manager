@@ -133,7 +133,7 @@ class DistributionList
         region = "DFW" if region == "Dallas"
         rom_dict = {
             "Austin" => [ "jgarbo@gofreedompower.com", "cmorenomunoz@gofreedompower.com" ],
-            "DFW" => [ "visan@gofreedompower.com", "jclark@gofreedompower.com" ],
+            "DFW" => [ "respana@gofreedompower.com", "jclark@gofreedompower.com" ],
             "Houston" => [ "marcusspicer@freedomsolarpower.com", "kjohnson@gofreedompower.com" ],
             "San Antonio" => [ "justinrose@gofreedompower.com", "jreyes@gofreedompower.com" ],
             "Orlando" => [ "carloslopez@gofreedompower.com" ],
