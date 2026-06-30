@@ -15,6 +15,7 @@ import AppsIcon from '@mui/icons-material/Apps';
 import POGenerationView from './POGenerationView';
 import ProcurementDashboard from './ProcurementDashboard';
 import InventoryDashboard from './InventoryDashboard';
+import MissedFulfillments from './MissedFulfillments';
 
 // Freedom Power Brand Colors
 const BRAND = {
@@ -47,6 +48,7 @@ const VIEWS = [
   { key: 'po-generation', label: 'PO Generation', Component: POGenerationView },
   { key: 'procurement', label: 'Contract Labor', Component: ProcurementDashboard },
   { key: 'inventory', label: 'Inventory', Component: InventoryDashboard },
+  { key: 'missed-fulfillments', label: 'Missed Fulfillments', Component: MissedFulfillments },
 ];
 
 export default function Dashboard() {
