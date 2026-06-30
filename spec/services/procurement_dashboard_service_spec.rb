@@ -113,6 +113,34 @@ RSpec.describe ProcurementDashboardService do
     end
   end
 
+  describe '#dashboard aging' do
+    let(:dated_line) do
+      {
+        'po_id' => 400, 'po_number' => 'PO-400', 'vendor' => 'Devlin',
+        'status_code' => 'B', 'ns_class' => 'Commercial', 'location' => 'Austin',
+        'project' => nil, 'quantity' => 1, 'quantity_received' => 0,
+        'quantity_billed' => 0, 'rate' => 10, 'po_date' => '1/1/2025'
+      }
+    end
+
+    it 'computes age in days from the PO date' do
+      allow(netsuite_client).to receive(:suiteql)
+        .and_return({ 'items' => [ dated_line ], 'hasMore' => false })
+
+      expected = (Date.current - Date.new(2025, 1, 1)).to_i
+      row = service.dashboard[:rows].first
+      expect(row[:age_days]).to eq(expected)
+      expect(row[:po_date]).to eq('1/1/2025')
+    end
+
+    it 'returns a nil age for an unparseable date' do
+      allow(netsuite_client).to receive(:suiteql)
+        .and_return({ 'items' => [ dated_line.merge('po_date' => 'not-a-date') ], 'hasMore' => false })
+
+      expect(service.dashboard[:rows].first[:age_days]).to be_nil
+    end
+  end
+
   describe '#dashboard with missing/blank fields' do
     let(:lines) do
       [

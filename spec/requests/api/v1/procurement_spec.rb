@@ -17,6 +17,8 @@ RSpec.describe 'API V1 Procurement', type: :request do
           {
             po_number: 'PO-100',
             netsuite_url: 'https://acct.app.netsuite.com/app/accounting/transactions/purchord.nl?id=100',
+            po_date: '1/1/2025',
+            age_days: 120,
             vendor: 'Devlin',
             ns_class: 'Commercial',
             location: 'Austin',
@@ -52,6 +54,7 @@ RSpec.describe 'API V1 Procurement', type: :request do
       row = json['data']['rows'].first
       expect(row['po_number']).to eq('PO-100')
       expect(row['netsuite_url']).to include('purchord.nl?id=100')
+      expect(row['age_days']).to eq(120)
       expect(row['vendor']).to eq('Devlin')
       expect(row['ns_class']).to eq('Commercial')
       expect(row['location']).to eq('Austin')

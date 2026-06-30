@@ -72,6 +72,7 @@ class ProcurementDashboardService
              t.tranid AS po_number,
              BUILTIN.DF(t.entity) AS vendor,
              t.status AS status_code,
+             t.trandate AS po_date,
              BUILTIN.DF(tl.class) AS ns_class,
              BUILTIN.DF(tl.location) AS location,
              BUILTIN.DF(tl.entity) AS project,
@@ -103,6 +104,27 @@ class ProcurementDashboardService
     @netsuite_base_url = account_id.present? ? "https://#{account_id}.app.netsuite.com" : nil
   end
 
+  # Days since the PO date, or nil if the date can't be parsed.
+  def days_since(date_string)
+    date = parse_date(date_string)
+    return nil unless date
+
+    (Date.current - date).to_i
+  end
+
+  # NetSuite SuiteQL returns dates like "6/22/2023"; fall back to a lenient parse.
+  def parse_date(value)
+    return nil if value.blank?
+
+    Date.strptime(value, "%m/%d/%Y")
+  rescue ArgumentError
+    begin
+      Date.parse(value)
+    rescue ArgumentError, TypeError
+      nil
+    end
+  end
+
   def normalize_line(row)
     ordered  = row["quantity"].to_f
     received = row["quantity_received"].to_f
@@ -113,6 +135,8 @@ class ProcurementDashboardService
     {
       po_id: row["po_id"],
       po_number: row["po_number"],
+      po_date: row["po_date"],
+      age_days: days_since(row["po_date"]),
       vendor: row["vendor"].presence || "Unknown Vendor",
       ns_class: row["ns_class"].presence || "Unclassified",
       location: row["location"].presence || "No Location",
@@ -139,6 +163,8 @@ class ProcurementDashboardService
       {
         po_number: first[:po_number],
         netsuite_url: netsuite_po_url(first[:po_id]),
+        po_date: first[:po_date],
+        age_days: first[:age_days],
         vendor: first[:vendor],
         ns_class: first[:ns_class],
         location: first[:location],

@@ -6,7 +6,6 @@ import {
   Chip,
   CircularProgress,
   Container,
-  Link,
   Paper,
   Stack,
   Tab,
@@ -18,6 +17,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -66,6 +66,26 @@ const PendingChip = ({ pending }) =>
     <Chip size="small" color="success" label="Done" variant="outlined" />
   );
 
+// Aging color buckets: <=30d green, 31-90d amber, >90d red.
+const ageColor = (days) => {
+  if (days == null) return 'default';
+  if (days > 90) return 'error';
+  if (days > 30) return 'warning';
+  return 'success';
+};
+
+const AgeCell = ({ days, date }) => {
+  if (days == null) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        —
+      </Typography>
+    );
+  }
+  const chip = <Chip size="small" color={ageColor(days)} label={`${days}d`} variant="outlined" />;
+  return date ? <Tooltip title={`PO date: ${date}`}>{chip}</Tooltip> : chip;
+};
+
 // Procurement dashboard: open Contract Labor POs split by region (NetSuite
 // location) tabs, then grouped by Class, by vendor, with receipt/bill flagged
 // separately. PO numbers deep-link to the NetSuite record.
@@ -73,7 +93,7 @@ export default function ProcurementDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('All');
 
   const fetchData = async () => {
@@ -105,7 +125,7 @@ export default function ProcurementDashboard() {
   // Apply the text filter and the active region, then group for display.
   const { groups, totalUnbilled, poCount } = useMemo(() => {
     const rows = data?.rows || [];
-    const needle = filter.trim().toLowerCase();
+    const needle = search.trim().toLowerCase();
 
     const filtered = rows.filter((row) => {
       if (isIgnoredLocation(row.location)) return false;
@@ -133,7 +153,7 @@ export default function ProcurementDashboard() {
       totalUnbilled: filtered.reduce((sum, r) => sum + (r.unbilled_amount || 0), 0),
       poCount: filtered.length,
     };
-  }, [data, filter, activeRegion]);
+  }, [data, search, activeRegion]);
 
   if (loading) {
     return (
@@ -184,15 +204,21 @@ export default function ProcurementDashboard() {
               {activeRegion === 'All' ? 'all regions' : activeRegion}
             </Typography>
           </Box>
-          <Stack direction="row" spacing={2} alignItems="center">
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ flexShrink: 0 }}>
             <TextField
               size="small"
-              label="Filter"
+              label="Search"
               placeholder="vendor, PO, project…"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ width: 260, '& .MuiOutlinedInput-root': { height: 40 } }}
             />
-            <Button variant="outlined" startIcon={<RefreshIcon />} onClick={fetchData}>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={fetchData}
+              sx={{ height: 40 }}
+            >
               Refresh
             </Button>
           </Stack>
@@ -234,6 +260,7 @@ export default function ProcurementDashboard() {
                   <TableRow>
                     <TableCell>Vendor</TableCell>
                     <TableCell>PO #</TableCell>
+                    <TableCell align="center">Age</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell align="right">Ordered</TableCell>
                     <TableCell align="right">Received</TableCell>
@@ -245,21 +272,22 @@ export default function ProcurementDashboard() {
                 </TableHead>
                 <TableBody>
                   {group.rows.map((row, idx) => (
-                    <TableRow key={`${row.po_number}-${idx}`} hover>
+                    <TableRow
+                      key={`${row.po_number}-${idx}`}
+                      hover
+                      onClick={
+                        row.netsuite_url
+                          ? () => window.open(row.netsuite_url, '_blank', 'noopener')
+                          : undefined
+                      }
+                      sx={{ cursor: row.netsuite_url ? 'pointer' : 'default' }}
+                    >
                       <TableCell>{row.vendor}</TableCell>
-                      <TableCell>
-                        {row.netsuite_url ? (
-                          <Link
-                            href={row.netsuite_url}
-                            target="_blank"
-                            rel="noopener"
-                            underline="hover"
-                          >
-                            {row.po_number}
-                          </Link>
-                        ) : (
-                          row.po_number
-                        )}
+                      <TableCell sx={{ color: row.netsuite_url ? 'primary.main' : 'inherit' }}>
+                        {row.po_number}
+                      </TableCell>
+                      <TableCell align="center">
+                        <AgeCell days={row.age_days} date={row.po_date} />
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">{row.status_label}</Typography>
