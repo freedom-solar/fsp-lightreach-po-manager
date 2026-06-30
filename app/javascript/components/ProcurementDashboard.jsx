@@ -28,6 +28,37 @@ const currency = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
 });
 
+// Fixed Procurement region tabs. NetSuite locations roll up into these
+// (San Antonio is part of Austin; Dallas shows as DFW).
+const REGIONS = ['All', 'Commercial', 'Austin', 'DFW', 'Houston', 'Orlando', 'Tampa'];
+
+const LOCATION_TO_REGION = {
+  Commercial: 'Commercial',
+  Austin: 'Austin',
+  'San Antonio': 'Austin',
+  Dallas: 'DFW',
+  Houston: 'Houston',
+  Orlando: 'Orlando',
+  Tampa: 'Tampa',
+};
+
+// Maps a NetSuite location (incl. "X - Consignment" variants) to a region tab,
+// or null if it isn't part of one of the fixed regions (shown only under "All").
+const regionForLocation = (location) => {
+  if (!location) return null;
+  const base = location.replace(/\s*-\s*Consignment$/i, '').trim();
+  return LOCATION_TO_REGION[base] || null;
+};
+
+// Locations excluded from the dashboard entirely (even under "All").
+const IGNORED_LOCATIONS = ['Charlotte'];
+
+const isIgnoredLocation = (location) => {
+  if (!location) return false;
+  const base = location.replace(/\s*-\s*Consignment$/i, '').trim();
+  return IGNORED_LOCATIONS.includes(base);
+};
+
 const PendingChip = ({ pending }) =>
   pending ? (
     <Chip size="small" color="warning" label="Pending" variant="outlined" />
@@ -69,15 +100,7 @@ export default function ProcurementDashboard() {
     fetchData();
   }, []);
 
-  // Region (NetSuite location) tabs, derived from the data so nothing is hidden.
-  const regions = useMemo(() => {
-    const locations = Array.from(
-      new Set((data?.rows || []).map((r) => r.location).filter(Boolean))
-    ).sort();
-    return ['All', ...locations];
-  }, [data]);
-
-  const activeRegion = regions.includes(selectedRegion) ? selectedRegion : 'All';
+  const activeRegion = REGIONS.includes(selectedRegion) ? selectedRegion : 'All';
 
   // Apply the text filter and the active region, then group for display.
   const { groups, totalUnbilled, poCount } = useMemo(() => {
@@ -85,7 +108,8 @@ export default function ProcurementDashboard() {
     const needle = filter.trim().toLowerCase();
 
     const filtered = rows.filter((row) => {
-      if (activeRegion !== 'All' && row.location !== activeRegion) return false;
+      if (isIgnoredLocation(row.location)) return false;
+      if (activeRegion !== 'All' && regionForLocation(row.location) !== activeRegion) return false;
       if (!needle) return true;
       return [row.vendor, row.ns_class, row.location, row.po_number, ...(row.projects || [])]
         .filter(Boolean)
@@ -124,7 +148,7 @@ export default function ProcurementDashboard() {
 
   return (
     <>
-      {data && regions.length > 1 && (
+      {data && (
         <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
           <Container maxWidth="xl">
             <Tabs
@@ -134,7 +158,7 @@ export default function ProcurementDashboard() {
               variant="scrollable"
               scrollButtons="auto"
             >
-              {regions.map((region) => (
+              {REGIONS.map((region) => (
                 <Tab key={region} label={region} value={region} />
               ))}
             </Tabs>
