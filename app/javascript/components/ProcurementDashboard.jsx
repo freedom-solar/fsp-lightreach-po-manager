@@ -7,7 +7,6 @@ import {
   CircularProgress,
   Container,
   Paper,
-  Stack,
   Tab,
   Tabs,
   Table,
@@ -200,12 +199,15 @@ export default function ProcurementDashboard() {
       )}
 
       <Container maxWidth="xl" sx={{ flexGrow: 1, py: 3 }}>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={2}
-          alignItems={{ sm: 'center' }}
-          justifyContent="space-between"
-          sx={{ mb: 3 }}
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { sm: 'center' },
+            gap: 2,
+            mb: 3,
+          }}
         >
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 600 }}>
@@ -217,7 +219,7 @@ export default function ProcurementDashboard() {
               {activeRegion === 'All' ? 'all regions' : activeRegion}
             </Typography>
           </Box>
-          <Stack direction="row" spacing={2} alignItems="center" sx={{ flexShrink: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
             <TextField
               size="small"
               label="Search"
@@ -234,8 +236,8 @@ export default function ProcurementDashboard() {
             >
               Refresh
             </Button>
-          </Stack>
-        </Stack>
+          </Box>
+        </Box>
 
         {error && (
           <Alert severity="error" sx={{ mb: 3 }}>
