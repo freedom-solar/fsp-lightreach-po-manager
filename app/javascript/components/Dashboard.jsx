@@ -13,6 +13,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import LogoutIcon from '@mui/icons-material/Logout';
 import POGenerationView from './POGenerationView';
 import ProcurementDashboard from './ProcurementDashboard';
+import InventoryDashboard from './InventoryDashboard';
 
 // Freedom Power Brand Colors
 const BRAND = {
@@ -43,7 +44,8 @@ const darkTheme = createTheme({
 // them as tabs in the app bar.
 const VIEWS = [
   { key: 'po-generation', label: 'PO Generation', Component: POGenerationView },
-  { key: 'procurement', label: 'Dashboard', Component: ProcurementDashboard },
+  { key: 'procurement', label: 'Contract Labor', Component: ProcurementDashboard },
+  { key: 'inventory', label: 'Inventory', Component: InventoryDashboard },
 ];
 
 export default function Dashboard() {
