@@ -2,18 +2,17 @@ import React, { useState, useEffect } from 'react';
 import {
   AppBar,
   Box,
-  Container,
   Tab,
   Tabs,
   Toolbar,
   Typography,
-  Button,
   IconButton,
 } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import LogoutIcon from '@mui/icons-material/Logout';
-import RegionView from './po_generation/RegionView';
+import POGenerationView from './POGenerationView';
+import ProcurementDashboard from './ProcurementDashboard';
 
 // Freedom Power Brand Colors
 const BRAND = {
@@ -40,35 +39,36 @@ const darkTheme = createTheme({
   }
 });
 
-const REGIONS = ['Austin', 'Dallas', 'Houston', 'San Antonio', 'Orlando', 'Tampa'];
+// Top-level feature views. Add new dashboards here (e.g. Inventory) to surface
+// them as tabs in the app bar.
+const VIEWS = [
+  { key: 'po-generation', label: 'PO Generation', Component: POGenerationView },
+  { key: 'procurement', label: 'Procurement', Component: ProcurementDashboard },
+];
 
 export default function Dashboard() {
   // Get logo URL from data attribute set by Rails asset pipeline
   const logoUrl = document.getElementById('react-root')?.getAttribute('data-logo-url');
 
-  // Initialize selected region from URL query params
-  const getInitialRegion = () => {
+  // Initialize selected view from URL query params
+  const getInitialView = () => {
     const params = new URLSearchParams(window.location.search);
-    const regionParam = params.get('region');
-    if (regionParam) {
-      const index = REGIONS.findIndex(r => r.toLowerCase() === regionParam.toLowerCase());
-      if (index !== -1) return index;
-    }
-    return 0; // Default to Austin
+    const viewParam = params.get('view');
+    const index = VIEWS.findIndex(v => v.key === viewParam);
+    return index !== -1 ? index : 0;
   };
 
-  const [selectedRegion, setSelectedRegion] = useState(getInitialRegion);
+  const [selectedView, setSelectedView] = useState(getInitialView);
 
-  // Update URL when region changes
+  // Update URL when view changes
   useEffect(() => {
-    const region = REGIONS[selectedRegion];
     const url = new URL(window.location);
-    url.searchParams.set('region', region);
+    url.searchParams.set('view', VIEWS[selectedView].key);
     window.history.pushState({}, '', url);
-  }, [selectedRegion]);
+  }, [selectedView]);
 
-  const handleRegionChange = (event, newValue) => {
-    setSelectedRegion(newValue);
+  const handleViewChange = (event, newValue) => {
+    setSelectedView(newValue);
   };
 
   const handleLogout = () => {
@@ -76,6 +76,8 @@ export default function Dashboard() {
       window.location.href = '/users/sign_out';
     }
   };
+
+  const ActiveComponent = VIEWS[selectedView].Component;
 
   return (
     <ThemeProvider theme={darkTheme}>
@@ -109,34 +111,21 @@ export default function Dashboard() {
               <LogoutIcon />
             </IconButton>
           </Toolbar>
-        </AppBar>
-
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
-        <Container maxWidth="xl">
           <Tabs
-            value={selectedRegion}
-            onChange={handleRegionChange}
-            aria-label="region tabs"
+            value={selectedView}
+            onChange={handleViewChange}
+            aria-label="view tabs"
+            textColor="inherit"
+            indicatorColor="primary"
+            sx={{ px: 2, borderTop: 1, borderColor: 'divider' }}
           >
-            {REGIONS.map((region) => (
-              <Tab key={region} label={region} />
+            {VIEWS.map((view) => (
+              <Tab key={view.key} label={view.label} />
             ))}
           </Tabs>
-        </Container>
-      </Box>
+        </AppBar>
 
-      <Container maxWidth="xl" sx={{ flexGrow: 1, py: 3 }}>
-        {REGIONS.map((region, index) => (
-          <div
-            key={region}
-            role="tabpanel"
-            hidden={selectedRegion !== index}
-            id={`region-tabpanel-${index}`}
-          >
-            {selectedRegion === index && <RegionView region={region} />}
-          </div>
-        ))}
-      </Container>
+        <ActiveComponent />
       </Box>
     </ThemeProvider>
   );

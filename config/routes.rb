@@ -29,6 +29,9 @@ Rails.application.routes.draw do
 
       # Material Return
       post "material_return/request", to: "material_return#create"
+
+      # Procurement dashboard
+      get "procurement/open_pos", to: "procurement#open_pos"
     end
   end
 
