@@ -38,6 +38,9 @@ Rails.application.routes.draw do
 
       # Inventory dashboard
       get "inventory/open_items", to: "inventory#open_items"
+
+      # Missed fulfillments report
+      get "missed_fulfillments", to: "missed_fulfillments#index"
     end
   end
 
