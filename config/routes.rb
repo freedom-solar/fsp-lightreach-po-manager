@@ -12,6 +12,9 @@ Rails.application.routes.draw do
   # Dashboard
   get "dashboard", to: "dashboard#index"
 
+  # Link Hub - quick access to dashboards across the company
+  get "link-hub", to: "dashboard#link_hub"
+
   # API routes (to be implemented)
   namespace :api do
     namespace :v1 do

@@ -11,6 +11,7 @@ import {
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import LogoutIcon from '@mui/icons-material/Logout';
+import AppsIcon from '@mui/icons-material/Apps';
 import POGenerationView from './POGenerationView';
 import ProcurementDashboard from './ProcurementDashboard';
 import InventoryDashboard from './InventoryDashboard';
@@ -105,6 +106,14 @@ export default function Dashboard() {
               </Typography>
             </Box>
             <Box sx={{ flexGrow: 1 }} />
+            <IconButton
+              color="inherit"
+              component="a"
+              href="/link-hub"
+              title="Link Hub"
+            >
+              <AppsIcon />
+            </IconButton>
             <IconButton
               color="inherit"
               onClick={handleLogout}
