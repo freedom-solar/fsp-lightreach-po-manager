@@ -74,6 +74,18 @@ const ageColor = (days) => {
   return 'success';
 };
 
+// Compact age label: days under a month, months under a year, then years (+ months).
+const formatAge = (days) => {
+  if (days < 30) return `${days}d`;
+
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months}mo`;
+
+  const years = Math.floor(months / 12);
+  const remMonths = months % 12;
+  return remMonths > 0 ? `${years}y ${remMonths}mo` : `${years}y`;
+};
+
 const AgeCell = ({ days, date }) => {
   if (days == null) {
     return (
@@ -82,8 +94,9 @@ const AgeCell = ({ days, date }) => {
       </Typography>
     );
   }
-  const chip = <Chip size="small" color={ageColor(days)} label={`${days}d`} variant="outlined" />;
-  return date ? <Tooltip title={`PO date: ${date}`}>{chip}</Tooltip> : chip;
+  const chip = <Chip size="small" color={ageColor(days)} label={formatAge(days)} variant="outlined" />;
+  const tooltip = [date && `PO date: ${date}`, `${days} days`].filter(Boolean).join(' · ');
+  return <Tooltip title={tooltip}>{chip}</Tooltip>;
 };
 
 // Procurement dashboard: open Contract Labor POs split by region (NetSuite
