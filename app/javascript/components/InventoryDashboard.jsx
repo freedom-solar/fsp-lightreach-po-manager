@@ -53,6 +53,98 @@ const QtyCell = ({ value, color }) => (
   </TableCell>
 );
 
+// Cap how many PO buttons render before collapsing behind a "+N more".
+const PO_BUTTON_LIMIT = 6;
+
+const POButton = ({ label, title, href }) => (
+  <Tooltip title={title}>
+    <Button size="small" variant="outlined" component="a" href={href} target="_blank" rel="noopener">
+      {label}
+    </Button>
+  </Tooltip>
+);
+
+// One project group: header (project, schedule, PO/SO buttons) + item table.
+function ProjectCard({ group }) {
+  const [showAllPOs, setShowAllPOs] = useState(false);
+
+  const poLinks = Array.from(
+    new Map(group.rows.flatMap((r) => r.po_links || []).map((p) => [p.number, p.url]))
+  ).map(([number, url]) => ({ number, url }));
+  const soLink = group.rows.find((r) => r.so_link)?.so_link;
+
+  const visiblePOs = showAllPOs ? poLinks : poLinks.slice(0, PO_BUTTON_LIMIT);
+  const hiddenCount = poLinks.length - visiblePOs.length;
+
+  return (
+    <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+      <Box
+        sx={{
+          px: 2,
+          py: 1.5,
+          bgcolor: 'background.default',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 2,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            {group.project}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {group.location}
+            {group.install_date ? ` · install ${formatDate(group.install_date)}` : ' · not scheduled'}
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          {visiblePOs.map((po) => (
+            <POButton key={po.number} label="PO" title={po.number} href={po.url} />
+          ))}
+          {hiddenCount > 0 && (
+            <Button size="small" onClick={() => setShowAllPOs(true)}>
+              +{hiddenCount} more
+            </Button>
+          )}
+          {showAllPOs && poLinks.length > PO_BUTTON_LIMIT && (
+            <Button size="small" onClick={() => setShowAllPOs(false)}>
+              Show less
+            </Button>
+          )}
+          {soLink && <POButton label="SO" title="Sales Order" href={soLink} />}
+          <ScheduleChip urgency={group.urgency} installDate={group.install_date} />
+        </Box>
+      </Box>
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Item</TableCell>
+              <TableCell align="right">Ordered</TableCell>
+              <TableCell align="right">Received</TableCell>
+              <TableCell align="right">Not Received</TableCell>
+              <TableCell align="right">In Warehouse</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {group.rows.map((row, idx) => (
+              <TableRow key={`${row.item}-${idx}`} hover>
+                <TableCell>{row.item}</TableCell>
+                <TableCell align="right">{row.ordered_qty}</TableCell>
+                <TableCell align="right">{row.received_qty}</TableCell>
+                <QtyCell value={row.not_received_qty} color="warning" />
+                <QtyCell value={row.received_not_allocated_qty} color="info" />
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Paper>
+  );
+}
+
 // Region tab selection is persisted to the URL (?invRegion=) so views are bookmarkable.
 const REGION_PARAM = 'invRegion';
 
@@ -236,94 +328,9 @@ export default function InventoryDashboard() {
             alignItems: 'start',
           }}
         >
-        {groups.map((group) => {
-          const poLinks = Array.from(
-            new Map(group.rows.flatMap((r) => r.po_links || []).map((p) => [p.number, p.url]))
-          ).map(([number, url]) => ({ number, url }));
-          const soLink = group.rows.find((r) => r.so_link)?.so_link;
-
-          return (
-          <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden' }}>
-            <Box
-              sx={{
-                px: 2,
-                py: 1.5,
-                bgcolor: 'background.default',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 2,
-                flexWrap: 'wrap',
-              }}
-            >
-              <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                  {group.project}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {group.location}
-                  {group.install_date ? ` · install ${formatDate(group.install_date)}` : ' · not scheduled'}
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                {poLinks.map((po) => (
-                  <Tooltip key={po.number} title={po.number}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      component="a"
-                      href={po.url}
-                      target="_blank"
-                      rel="noopener"
-                    >
-                      PO
-                    </Button>
-                  </Tooltip>
-                ))}
-                {soLink && (
-                  <Tooltip title="Sales Order">
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      component="a"
-                      href={soLink}
-                      target="_blank"
-                      rel="noopener"
-                    >
-                      SO
-                    </Button>
-                  </Tooltip>
-                )}
-                <ScheduleChip urgency={group.urgency} installDate={group.install_date} />
-              </Box>
-            </Box>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Item</TableCell>
-                    <TableCell align="right">Ordered</TableCell>
-                    <TableCell align="right">Received</TableCell>
-                    <TableCell align="right">Not Received</TableCell>
-                    <TableCell align="right">In Warehouse</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {group.rows.map((row, idx) => (
-                    <TableRow key={`${row.item}-${idx}`} hover>
-                      <TableCell>{row.item}</TableCell>
-                      <TableCell align="right">{row.ordered_qty}</TableCell>
-                      <TableCell align="right">{row.received_qty}</TableCell>
-                      <QtyCell value={row.not_received_qty} color="warning" />
-                      <QtyCell value={row.received_not_allocated_qty} color="info" />
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-          );
-        })}
+        {groups.map((group) => (
+          <ProjectCard key={group.key} group={group} />
+        ))}
         </Box>
       </Container>
     </>
