@@ -6,7 +6,6 @@ import {
   Chip,
   CircularProgress,
   Container,
-  Link,
   Paper,
   Tab,
   Tabs,
@@ -17,6 +16,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -228,6 +228,14 @@ export default function InventoryDashboard() {
           <Alert severity="info">No open inventory POs match the current filter.</Alert>
         )}
 
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' },
+            gap: 3,
+            alignItems: 'start',
+          }}
+        >
         {groups.map((group) => {
           const poLinks = Array.from(
             new Map(group.rows.flatMap((r) => r.po_links || []).map((p) => [p.number, p.url]))
@@ -235,7 +243,7 @@ export default function InventoryDashboard() {
           const soLink = group.rows.find((r) => r.so_link)?.so_link;
 
           return (
-          <Paper key={group.key} variant="outlined" sx={{ mb: 3, overflow: 'hidden' }}>
+          <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden' }}>
             <Box
               sx={{
                 px: 2,
@@ -257,23 +265,34 @@ export default function InventoryDashboard() {
                   {group.install_date ? ` · install ${formatDate(group.install_date)}` : ' · not scheduled'}
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 {poLinks.map((po) => (
-                  <Link
-                    key={po.number}
-                    href={po.url}
-                    target="_blank"
-                    rel="noopener"
-                    variant="body2"
-                    underline="hover"
-                  >
-                    PO {po.number}
-                  </Link>
+                  <Tooltip key={po.number} title={po.number}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      component="a"
+                      href={po.url}
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      PO
+                    </Button>
+                  </Tooltip>
                 ))}
                 {soLink && (
-                  <Link href={soLink} target="_blank" rel="noopener" variant="body2" underline="hover">
-                    SO
-                  </Link>
+                  <Tooltip title="Sales Order">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      component="a"
+                      href={soLink}
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      SO
+                    </Button>
+                  </Tooltip>
                 )}
                 <ScheduleChip urgency={group.urgency} installDate={group.install_date} />
               </Box>
@@ -305,6 +324,7 @@ export default function InventoryDashboard() {
           </Paper>
           );
         })}
+        </Box>
       </Container>
     </>
   );
