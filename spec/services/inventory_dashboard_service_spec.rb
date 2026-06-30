@@ -40,7 +40,6 @@ RSpec.describe InventoryDashboardService do
       expect(row[:item]).to eq('Panel A')
       expect(row[:ordered_qty]).to eq(10)
       expect(row[:received_qty]).to eq(6)
-      expect(row[:allocated_qty]).to eq(2)
       expect(row[:not_received_qty]).to eq(4)
       expect(row[:received_not_allocated_qty]).to eq(4)
     end
@@ -94,6 +93,30 @@ RSpec.describe InventoryDashboardService do
       allow(SkeduloApi).to receive(:find_jobs).with('Tesla Powerwall', any_args).and_return([])
 
       expect(service.dashboard[:rows].first[:urgency]).to be_nil
+    end
+  end
+
+  describe '#dashboard project number parsing' do
+    it 'derives the project number from the entity display name leading token' do
+      line = po_lines.first.merge('project_name' => '118811 118811 - Iris Montero')
+      allow(netsuite_client).to receive(:suiteql).and_return(
+        { 'items' => [ line ], 'hasMore' => false },
+        { 'items' => [ { 'ext' => 'sales_order_118811', 'item_id' => 50, 'fulfilled' => 3 } ], 'hasMore' => false }
+      )
+
+      row = service.dashboard[:rows].first
+      expect(row[:project_number]).to eq('118811')
+      # received 6 - SO-fulfilled 3 = 3, proving the SO matched via the parsed number
+      expect(row[:received_not_allocated_qty]).to eq(3)
+    end
+  end
+
+  describe '#dashboard surfaces SuiteQL errors' do
+    it 'raises when NetSuite returns an error body instead of items' do
+      allow(netsuite_client).to receive(:suiteql)
+        .and_return({ 'type' => 'Bad Request', 'status' => 400 })
+
+      expect { service.dashboard }.to raise_error(/NetSuite SuiteQL error/)
     end
   end
 

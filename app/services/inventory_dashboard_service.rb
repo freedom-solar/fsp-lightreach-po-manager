@@ -30,10 +30,10 @@ class InventoryDashboardService
     po_lines = fetch_open_po_lines
     project_numbers = po_lines.filter_map { |l| l[:project_number] }.uniq
 
-    fulfilled = fetch_fulfilled_quantities(project_numbers)
+    so_data = fetch_sales_order_data(project_numbers)
     schedule = fetch_schedule(project_numbers)
 
-    rows = build_rows(po_lines, fulfilled, schedule)
+    rows = build_rows(po_lines, so_data, schedule)
 
     {
       generated_at: Time.current,
@@ -61,14 +61,12 @@ class InventoryDashboardService
              t.tranid AS po_number,
              tl.item AS item_id,
              BUILTIN.DF(tl.item) AS item_name,
-             e.entityid AS project_number,
              BUILTIN.DF(tl.entity) AS project_name,
              BUILTIN.DF(tl.location) AS location,
              tl.quantity AS quantity,
              tl.quantityshiprecv AS quantity_received
       FROM transaction t
       INNER JOIN transactionline tl ON tl.transaction = t.id
-      LEFT JOIN entity e ON e.id = tl.entity
       WHERE t.type = 'PurchOrd'
         AND t.status IN (#{quoted(OPEN_STATUS_CODES)})
         AND tl.mainline = 'F'
@@ -77,40 +75,62 @@ class InventoryDashboardService
   end
 
   def normalize_po_line(row)
+    raw_project = row["project_name"].presence
     {
+      po_id: row["po_id"],
       po_number: row["po_number"],
       item_id: row["item_id"],
       item: row["item_name"].presence || "Unknown Item",
-      project_number: row["project_number"].presence,
-      project_name: row["project_name"].presence || "No Project",
+      project_number: project_number_from(raw_project),
+      project_name: clean_project_name(raw_project),
       location: row["location"].presence || "No Location",
       ordered: row["quantity"].to_f,
       received: row["quantity_received"].to_f
     }
   end
 
+  # The SuiteQL REST role can't query the `entity` record, so the project number
+  # is derived from the entity display name (BUILTIN.DF), whose leading token is
+  # the entity id / project number, e.g. "118811 118811 - Iris Montero" -> "118811".
+  def project_number_from(project_name)
+    project_name&.strip&.split(/\s+/)&.first.presence
+  end
+
+  # BUILTIN.DF repeats the entity id in the display name, e.g.
+  # "119417 119417 - Spencer Ashford"; drop the duplicated leading token.
+  def clean_project_name(project_name)
+    return "No Project" if project_name.blank?
+
+    tokens = project_name.strip.split(/\s+/)
+    tokens.shift if tokens.size >= 2 && tokens[0] == tokens[1]
+    tokens.join(" ")
+  end
+
   # --- NetSuite: allocated (fulfilled-to-job) quantities from Sales Orders ----
 
-  # Returns { [project_number, item_id] => fulfilled_qty }.
-  def fetch_fulfilled_quantities(project_numbers)
-    return {} if project_numbers.empty?
-
+  # Returns { fulfilled: { [project_number, item_id] => qty }, so_ids: { project_number => so_id } }
+  # by matching each project's Sales Order via externalid "sales_order_<project#>".
+  def fetch_sales_order_data(project_numbers)
     fulfilled = Hash.new(0.0)
+    so_ids = {}
+    return { fulfilled: fulfilled, so_ids: so_ids } if project_numbers.empty?
 
     project_numbers.each_slice(200) do |slice|
       external_ids = slice.map { |n| "'sales_order_#{n}'" }.join(", ")
-      run_suiteql(fulfilled_query(external_ids)).each do |row|
+      run_suiteql(sales_order_query(external_ids)).each do |row|
         project_number = row["ext"].to_s.sub("sales_order_", "")
         fulfilled[[ project_number, row["item_id"] ]] += row["fulfilled"].to_f.abs
+        so_ids[project_number] ||= row["so_id"]
       end
     end
 
-    fulfilled
+    { fulfilled: fulfilled, so_ids: so_ids }
   end
 
-  def fulfilled_query(external_ids)
+  def sales_order_query(external_ids)
     <<~SQL.squish
-      SELECT t.externalid AS ext,
+      SELECT t.id AS so_id,
+             t.externalid AS ext,
              tl.item AS item_id,
              tl.quantityshiprecv AS fulfilled
       FROM transaction t
@@ -130,8 +150,10 @@ class InventoryDashboardService
     return {} if project_numbers.empty?
 
     wanted = project_numbers.to_set
-    start_time = SCHEDULE_LOOKBACK_DAYS.days.ago.beginning_of_day
-    end_time = SCHEDULE_LOOKAHEAD_DAYS.days.from_now.end_of_day
+    # Use Time.now (system-local, carries a UTC offset) to match JobScheduleService:
+    # SkeduloApi#format_time_to_skedulo mangles offset-less (UTC) timestamps.
+    start_time = (Time.now - SCHEDULE_LOOKBACK_DAYS.days).beginning_of_day
+    end_time = (Time.now + SCHEDULE_LOOKAHEAD_DAYS.days).end_of_day
 
     schedule = {}
     SKEDULO_INSTALL_TYPES.each do |type|
@@ -160,7 +182,9 @@ class InventoryDashboardService
 
   # --- Assembly --------------------------------------------------------------
 
-  def build_rows(po_lines, fulfilled, schedule)
+  def build_rows(po_lines, so_data, schedule)
+    fulfilled = so_data[:fulfilled]
+    so_ids = so_data[:so_ids]
     grouped = po_lines.group_by { |l| [ l[:location], l[:project_number], l[:item_id] ] }
 
     rows = grouped.map do |(location, project_number, item_id), group|
@@ -181,9 +205,11 @@ class InventoryDashboardService
         project: first[:project_name],
         item: first[:item],
         po_numbers: group.map { |l| l[:po_number] }.uniq,
+        po_links: group.uniq { |l| l[:po_id] }
+                       .filter_map { |l| build_po_link(l) },
+        so_link: netsuite_record_url("salesord", project_number && so_ids[project_number]),
         ordered_qty: ordered.round(2),
         received_qty: received.round(2),
-        allocated_qty: allocated.round(2),
         not_received_qty: not_received.round(2),
         received_not_allocated_qty: received_not_allocated.round(2),
         install_date: sched && sched[:date]&.iso8601,
@@ -213,6 +239,28 @@ class InventoryDashboardService
     { "overdue" => 0, "at_risk" => 1 }.fetch(urgency, 2)
   end
 
+  # --- NetSuite deep links ---------------------------------------------------
+
+  def build_po_link(line)
+    url = netsuite_record_url("purchord", line[:po_id])
+    return nil unless url
+
+    { number: line[:po_number], url: url }
+  end
+
+  def netsuite_record_url(record_type, id)
+    return nil if id.blank? || netsuite_base_url.blank?
+
+    "#{netsuite_base_url}/app/accounting/transactions/#{record_type}.nl?id=#{id}"
+  end
+
+  def netsuite_base_url
+    return @netsuite_base_url if defined?(@netsuite_base_url)
+
+    account_id = Rails.application.credentials.dig(:netsuite, :production, :account_id_url)
+    @netsuite_base_url = account_id.present? ? "https://#{account_id}.app.netsuite.com" : nil
+  end
+
   # --- Helpers ---------------------------------------------------------------
 
   def run_suiteql(sql)
@@ -221,6 +269,13 @@ class InventoryDashboardService
 
     MAX_PAGES.times do
       result = client.suiteql(query: sql, limit: PAGE_SIZE, offset: offset)
+
+      # NetSuite returns an error body (no "items") on a bad query; surface it
+      # instead of silently treating it as zero results.
+      unless result.is_a?(Hash) && result.key?("items")
+        raise "NetSuite SuiteQL error: #{result.inspect[0, 300]}"
+      end
+
       items.concat(result["items"] || [])
 
       break unless result["hasMore"]

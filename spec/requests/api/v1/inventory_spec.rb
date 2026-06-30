@@ -22,7 +22,6 @@ RSpec.describe 'API V1 Inventory', type: :request do
             po_numbers: [ 'PO-1' ],
             ordered_qty: 10,
             received_qty: 6,
-            allocated_qty: 2,
             not_received_qty: 4,
             received_not_allocated_qty: 4,
             install_date: '2026-07-01',

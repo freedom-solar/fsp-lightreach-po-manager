@@ -6,8 +6,8 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Link,
   Paper,
-  Stack,
   Tab,
   Tabs,
   Table,
@@ -53,6 +53,14 @@ const QtyCell = ({ value, color }) => (
   </TableCell>
 );
 
+// Region tab selection is persisted to the URL (?invRegion=) so views are bookmarkable.
+const REGION_PARAM = 'invRegion';
+
+const getInitialRegion = () => {
+  const r = new URLSearchParams(window.location.search).get(REGION_PARAM);
+  return REGIONS.includes(r) ? r : 'All';
+};
+
 // Inventory dashboard (Warehouse Managers): open inventory POs split by region,
 // grouped by project, showing what's not received and received-but-not-allocated,
 // with late fulfillments flagged against the Skedulo install schedule.
@@ -61,7 +69,7 @@ export default function InventoryDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
-  const [selectedRegion, setSelectedRegion] = useState('All');
+  const [selectedRegion, setSelectedRegion] = useState(getInitialRegion);
 
   const fetchData = async () => {
     setLoading(true);
@@ -86,6 +94,13 @@ export default function InventoryDashboard() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Keep the selected region in the URL so the view can be bookmarked.
+  useEffect(() => {
+    const url = new URL(window.location);
+    url.searchParams.set(REGION_PARAM, selectedRegion);
+    window.history.replaceState({}, '', url);
+  }, [selectedRegion]);
 
   const activeRegion = REGIONS.includes(selectedRegion) ? selectedRegion : 'All';
 
@@ -213,7 +228,13 @@ export default function InventoryDashboard() {
           <Alert severity="info">No open inventory POs match the current filter.</Alert>
         )}
 
-        {groups.map((group) => (
+        {groups.map((group) => {
+          const poLinks = Array.from(
+            new Map(group.rows.flatMap((r) => r.po_links || []).map((p) => [p.number, p.url]))
+          ).map(([number, url]) => ({ number, url }));
+          const soLink = group.rows.find((r) => r.so_link)?.so_link;
+
+          return (
           <Paper key={group.key} variant="outlined" sx={{ mb: 3, overflow: 'hidden' }}>
             <Box
               sx={{
@@ -236,7 +257,26 @@ export default function InventoryDashboard() {
                   {group.install_date ? ` · install ${formatDate(group.install_date)}` : ' · not scheduled'}
                 </Typography>
               </Box>
-              <ScheduleChip urgency={group.urgency} installDate={group.install_date} />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                {poLinks.map((po) => (
+                  <Link
+                    key={po.number}
+                    href={po.url}
+                    target="_blank"
+                    rel="noopener"
+                    variant="body2"
+                    underline="hover"
+                  >
+                    PO {po.number}
+                  </Link>
+                ))}
+                {soLink && (
+                  <Link href={soLink} target="_blank" rel="noopener" variant="body2" underline="hover">
+                    SO
+                  </Link>
+                )}
+                <ScheduleChip urgency={group.urgency} installDate={group.install_date} />
+              </Box>
             </Box>
             <TableContainer>
               <Table size="small">
@@ -245,7 +285,6 @@ export default function InventoryDashboard() {
                     <TableCell>Item</TableCell>
                     <TableCell align="right">Ordered</TableCell>
                     <TableCell align="right">Received</TableCell>
-                    <TableCell align="right">Allocated</TableCell>
                     <TableCell align="right">Not Received</TableCell>
                     <TableCell align="right">In Warehouse</TableCell>
                   </TableRow>
@@ -256,7 +295,6 @@ export default function InventoryDashboard() {
                       <TableCell>{row.item}</TableCell>
                       <TableCell align="right">{row.ordered_qty}</TableCell>
                       <TableCell align="right">{row.received_qty}</TableCell>
-                      <TableCell align="right">{row.allocated_qty}</TableCell>
                       <QtyCell value={row.not_received_qty} color="warning" />
                       <QtyCell value={row.received_not_allocated_qty} color="info" />
                     </TableRow>
@@ -265,7 +303,8 @@ export default function InventoryDashboard() {
               </Table>
             </TableContainer>
           </Paper>
-        ))}
+          );
+        })}
       </Container>
     </>
   );

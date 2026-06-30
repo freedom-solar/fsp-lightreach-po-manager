@@ -68,6 +68,14 @@ const AgeCell = ({ days, date }) => {
   return <Tooltip title={tooltip}>{chip}</Tooltip>;
 };
 
+// Region tab selection is persisted to the URL (?clRegion=) so views are bookmarkable.
+const REGION_PARAM = 'clRegion';
+
+const getInitialRegion = () => {
+  const r = new URLSearchParams(window.location.search).get(REGION_PARAM);
+  return REGIONS.includes(r) ? r : 'All';
+};
+
 // Procurement dashboard: open Contract Labor POs split by region (NetSuite
 // location) tabs, then grouped by Class, by vendor, with receipt/bill flagged
 // separately. PO numbers deep-link to the NetSuite record.
@@ -76,7 +84,7 @@ export default function ProcurementDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
-  const [selectedRegion, setSelectedRegion] = useState('All');
+  const [selectedRegion, setSelectedRegion] = useState(getInitialRegion);
 
   const fetchData = async () => {
     setLoading(true);
@@ -101,6 +109,13 @@ export default function ProcurementDashboard() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Keep the selected region in the URL so the view can be bookmarked.
+  useEffect(() => {
+    const url = new URL(window.location);
+    url.searchParams.set(REGION_PARAM, selectedRegion);
+    window.history.replaceState({}, '', url);
+  }, [selectedRegion]);
 
   const activeRegion = REGIONS.includes(selectedRegion) ? selectedRegion : 'All';
 
