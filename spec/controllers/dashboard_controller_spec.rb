@@ -22,4 +22,22 @@ RSpec.describe DashboardController, type: :controller do
       end
     end
   end
+
+  describe 'GET #link_hub' do
+    context 'when user is authenticated' do
+      before { sign_in user }
+
+      it 'returns success' do
+        get :link_hub
+        expect(response).to have_http_status(:success)
+      end
+    end
+
+    context 'when user is not authenticated' do
+      it 'redirects to sign in' do
+        get :link_hub
+        expect(response).to redirect_to(new_user_session_path)
+      end
+    end
+  end
 end
