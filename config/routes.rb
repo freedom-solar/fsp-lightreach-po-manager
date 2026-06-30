@@ -32,6 +32,9 @@ Rails.application.routes.draw do
 
       # Procurement dashboard
       get "procurement/open_pos", to: "procurement#open_pos"
+
+      # Inventory dashboard
+      get "inventory/open_items", to: "inventory#open_items"
     end
   end
 
