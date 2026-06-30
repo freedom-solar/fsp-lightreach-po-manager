@@ -87,6 +87,25 @@ RSpec.describe MissedFulfillmentService do
       expect(service.report[:rows]).to be_empty
     end
 
+    it 'falls back to the installation date for storage SOs with no electrical date' do
+      storage_no_elec = [
+        {
+          'so_id' => 5, 'project_number' => '119005', 'customer' => 'StoreNoElec',
+          'status_code' => 'B', 'install_date' => '1/1/2026', 'electrical_date' => nil
+        }
+      ]
+      allow(netsuite_client).to receive(:suiteql).and_return(
+        { 'items' => storage_no_elec, 'hasMore' => false },
+        { 'items' => [ { 'so_id' => 5, 'has_storage' => 1, 'location_id' => 1 } ], 'hasMore' => false },
+        { 'items' => locations, 'hasMore' => false }
+      )
+
+      row = service.report[:rows].first
+      expect(row[:has_storage]).to be true
+      expect(row[:governing_basis]).to eq('installation')
+      expect(row[:project_number]).to eq('119005')
+    end
+
     it 'excludes SOs with no governing date (not yet scheduled)' do
       undated = [
         {

@@ -86,8 +86,11 @@ class MissedFulfillmentService
       meta = line_meta[h["so_id"]] || {}
       has_storage = meta[:has_storage]
 
-      governing_basis = has_storage ? "electrical" : "installation"
-      governing_date = parse_date(has_storage ? h["electrical_date"] : h["install_date"])
+      # Energy-storage SOs aren't past due until their electrical date — but only
+      # when one is actually set; otherwise fall back to the installation date.
+      use_electrical = has_storage && h["electrical_date"].present?
+      governing_basis = use_electrical ? "electrical" : "installation"
+      governing_date = parse_date(use_electrical ? h["electrical_date"] : h["install_date"])
       next unless governing_date && governing_date < Date.current
 
       {

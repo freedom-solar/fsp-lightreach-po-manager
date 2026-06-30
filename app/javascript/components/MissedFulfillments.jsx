@@ -6,7 +6,6 @@ import {
   Chip,
   CircularProgress,
   Container,
-  Link,
   Paper,
   Tab,
   Tabs,
@@ -185,15 +184,18 @@ export default function MissedFulfillments() {
                 </TableHead>
                 <TableBody>
                   {rows.map((row, idx) => (
-                    <TableRow key={`${row.project_number}-${idx}`} hover>
-                      <TableCell>
-                        {row.netsuite_url ? (
-                          <Link href={row.netsuite_url} target="_blank" rel="noopener" underline="hover">
-                            {row.project_number}
-                          </Link>
-                        ) : (
-                          row.project_number
-                        )}
+                    <TableRow
+                      key={`${row.project_number}-${idx}`}
+                      hover
+                      onClick={
+                        row.netsuite_url
+                          ? () => window.open(row.netsuite_url, '_blank', 'noopener')
+                          : undefined
+                      }
+                      sx={{ cursor: row.netsuite_url ? 'pointer' : 'default' }}
+                    >
+                      <TableCell sx={{ color: row.netsuite_url ? 'primary.main' : 'inherit' }}>
+                        {row.project_number}
                       </TableCell>
                       <TableCell>{row.customer}</TableCell>
                       <TableCell>{row.location}</TableCell>
