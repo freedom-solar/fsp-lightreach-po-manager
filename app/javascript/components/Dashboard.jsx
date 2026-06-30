@@ -43,7 +43,7 @@ const darkTheme = createTheme({
 // them as tabs in the app bar.
 const VIEWS = [
   { key: 'po-generation', label: 'PO Generation', Component: POGenerationView },
-  { key: 'procurement', label: 'Procurement', Component: ProcurementDashboard },
+  { key: 'procurement', label: 'Dashboard', Component: ProcurementDashboard },
 ];
 
 export default function Dashboard() {
