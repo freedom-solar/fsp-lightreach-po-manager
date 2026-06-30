@@ -97,6 +97,22 @@ RSpec.describe ProcurementDashboardService do
     end
   end
 
+  describe '#dashboard NetSuite deep links' do
+    it 'builds a PO record URL when the account id is configured' do
+      allow(service).to receive(:netsuite_base_url).and_return('https://acct123.app.netsuite.com')
+
+      row = service.dashboard[:rows].find { |r| r[:po_number] == 'PO-100' }
+      expect(row[:netsuite_url])
+        .to eq('https://acct123.app.netsuite.com/app/accounting/transactions/purchord.nl?id=100')
+    end
+
+    it 'returns a nil URL when the account id is not configured' do
+      allow(service).to receive(:netsuite_base_url).and_return(nil)
+
+      expect(service.dashboard[:rows].first[:netsuite_url]).to be_nil
+    end
+  end
+
   describe '#dashboard with missing/blank fields' do
     let(:lines) do
       [

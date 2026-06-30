@@ -88,6 +88,21 @@ class ProcurementDashboardService
     SQL
   end
 
+  # Deep link to the Purchase Order record in the NetSuite UI. Returns nil if the
+  # account id isn't configured so the frontend can fall back to plain text.
+  def netsuite_po_url(po_id)
+    return nil if po_id.blank? || netsuite_base_url.blank?
+
+    "#{netsuite_base_url}/app/accounting/transactions/purchord.nl?id=#{po_id}"
+  end
+
+  def netsuite_base_url
+    return @netsuite_base_url if defined?(@netsuite_base_url)
+
+    account_id = Rails.application.credentials.dig(:netsuite, :production, :account_id_url)
+    @netsuite_base_url = account_id.present? ? "https://#{account_id}.app.netsuite.com" : nil
+  end
+
   def normalize_line(row)
     ordered  = row["quantity"].to_f
     received = row["quantity_received"].to_f
@@ -123,6 +138,7 @@ class ProcurementDashboardService
       first = group.first
       {
         po_number: first[:po_number],
+        netsuite_url: netsuite_po_url(first[:po_id]),
         vendor: first[:vendor],
         ns_class: first[:ns_class],
         location: first[:location],
