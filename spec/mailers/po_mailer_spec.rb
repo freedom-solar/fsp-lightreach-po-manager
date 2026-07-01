@@ -185,6 +185,7 @@ RSpec.describe PoMailer, type: :mailer do
       it 'includes Tampa-specific contacts' do
         expect(mail.to).to include('hunter.david@greentechrenewables.com')
         expect(mail.to).to include('troy.walter@greentechrenewables.com')
+        expect(mail.to).to include('trevor.quinland@greentechrenewables.com')
       end
     end
 
@@ -436,6 +437,7 @@ RSpec.describe PoMailer, type: :mailer do
       it 'includes Tampa-specific contacts' do
         expect(mail.to).to include('hunter.david@greentechrenewables.com')
         expect(mail.to).to include('troy.walter@greentechrenewables.com')
+        expect(mail.to).to include('trevor.quinland@greentechrenewables.com')
       end
     end
 
