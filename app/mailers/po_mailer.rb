@@ -95,6 +95,7 @@ class PoMailer < ApplicationMailer
     if region == "Tampa"
       recipients << "hunter.david@greentechrenewables.com"
       recipients << "troy.walter@greentechrenewables.com"
+      recipients << "trevor.quinland@greentechrenewables.com"
     elsif region == "Orlando"
       recipients << "David.Principato@greentechrenewables.com"
       recipients << "jordan.swanson@greentechrenewables.com"
